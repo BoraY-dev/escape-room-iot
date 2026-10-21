@@ -6,7 +6,8 @@ aktéři, produkty a use-cases v `docs/02-business-model.md`.
 
 ## Jak se mnou pracovat (DŮLEŽITÉ)
 
-Jsem student a projekt dělám sám (parťák v týmu nereaguje). Chci, aby práce šla rychle,
+Jsem student; software (dokumentace, backend, frontend, cloud) dělám sám, hardware (IoT Node)
+dělá kolega – viz `docs/04-project-management.md`. Chci, aby práce šla rychle,
 ale zároveň se při ní **naučit, co se děje**. Proto:
 
 1. **Před každým krokem** v 1–3 větách řekni, co uděláš a proč.
@@ -81,7 +82,10 @@ Aktéři: **Provozovatel**, **Game master**, **Hráč** (jen fyzicky ovládá p�
 | Co se posílá do cloudu | Herní události (vyřešení, nápověda, ruční zásah) hned; teplota po downsamplingu | Události jsou důležité živě, teplota ne |
 | Komunikace node → gateway | USB/UART (1 node na gateway); Radio Dongle volitelně později | Jednodušší start |
 | Databáze | MongoDB (Atlas free tier) – **potvrzeno** | Snadné nasazení zdarma |
-| Rozsah MVP | US01–US04, US09–US12, US14–US17; ostatní jako rozšíření | Projekt dělám sám |
+| Rozsah MVP | US01–US04, US09–US12, US14–US17; ostatní jako rozšíření | Malý tým, software dělám sám |
+| Role teploměru | (1) podmínka hádanky – okamžitá hodnota, bez downsamplingu; (2) monitoring teploty místnosti – downsampling na gateway (měření à 10 s → 1 hodnota / 5 min) | Downsampling dává smysl jen u průběžné veličiny; tlačítko a náklon jsou jednorázové události. Strategie (průměr/medián) se zdůvodní v týdnu 7 |
+| Metoda řízení | Kanban přes GitHub Projects | Malý tým s nepravidelnou prací, sprinty by byly zbytečná režie |
+| Rozdělení práce | Software já, hardware (Core Module, firmware, RPi) kolega; gateway sdílená – k potvrzení | Viz `docs/04-project-management.md` |
 
 ## Milníky
 
