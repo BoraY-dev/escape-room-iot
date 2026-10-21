@@ -1,0 +1,21 @@
+node_modules/
+dist/
+build/
+.env
+.env.*
+!.env.example
+*.log
+.DS_Store
+.vscode/*
+!.vscode/extensions.json
+
+# Node-RED
+gateway/.node-red/
+gateway/*_cred.json
+gateway/.config.*.json
+gateway/.flows*.json.backup
+
+# HARDWARIO firmware build
+iot-node/obj/
+iot-node/out/
+iot-node/build/
