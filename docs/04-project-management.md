@@ -5,13 +5,13 @@
 | Člen | Odpovědnost |
 |---|---|
 | **Bora Yildirim** | dokumentace (uuApp Framework), backend (Express.js, MongoDB), frontend (React), nasazení v cloudu, Git repozitář |
-| **[jméno kolegy]** | hardware: nákup a zapojení HARDWARIO Core Module, firmware IoT Node, příprava Raspberry Pi |
+| **David Král** | hardware: nákup a zapojení HARDWARIO Core Module, firmware IoT Node, příprava Raspberry Pi |
 
 Gateway (Node-RED) je na rozhraní obou částí – rozdělení je **návrh, k potvrzení**:
 
 | Část gateway | Kdo |
 |---|---|
-| instalace Node-RED na Raspberry Pi, automatický start (systemd), čtení dat přes UART | [jméno kolegy] |
+| instalace Node-RED na Raspberry Pi, automatický start (systemd), čtení dat přes UART | David Král |
 | vyhodnocení pravidel, downsampling, lokální úložiště, komunikace s cloudem (registrace, HTTPS) | Bora Yildirim |
 
 Rozhraní mezi částmi se domlouvá dokumentem, ne ústně:
@@ -44,7 +44,7 @@ Práci řídíme metodou **Kanban** přes **GitHub Projects** (tabule napojená 
 | 6 | Návrh backendu (endpointy, datový model) | Bora |
 | 7 | Technické řešení IoT části | oba |
 | 7 | Základní implementace backendu | Bora |
-| 8 | Základní implementace IoT části (node, gateway) | kolega (node), oba (gateway) |
+| 8 | Základní implementace IoT části (node, gateway) | David (node), oba (gateway) |
 | 9 | Návrh frontendu (routy, komponenty) | Bora |
 | 10 | Základní implementace frontendu | Bora |
 | 12 | Nasazení aplikace v cloudu | Bora |
