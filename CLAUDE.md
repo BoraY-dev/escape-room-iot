@@ -80,7 +80,7 @@ Aktéři: **Provozovatel**, **Game master**, **Hráč** (jen fyzicky ovládá p�
 | Kde se vyhodnocují pravidla hádanek | Na **gateway**; cloud pravidla ukládá, gateway si je stahuje | Okamžitá odezva pro hráče, hra běží i bez internetu |
 | Co se posílá do cloudu | Herní události (vyřešení, nápověda, ruční zásah) hned; teplota po downsamplingu | Události jsou důležité živě, teplota ne |
 | Komunikace node → gateway | USB/UART (1 node na gateway); Radio Dongle volitelně později | Jednodušší start |
-| Databáze | MongoDB (Atlas free tier) – **k potvrzení v týdnu 6** | Snadné nasazení zdarma |
+| Databáze | MongoDB (Atlas free tier) – **potvrzeno** | Snadné nasazení zdarma |
 | Rozsah MVP | US01–US04, US09–US12, US14–US17; ostatní jako rozšíření | Projekt dělám sám |
 
 ## Milníky
