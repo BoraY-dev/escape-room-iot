@@ -50,7 +50,7 @@ cd client && npm install && npm run dev     # http://localhost:5173
 | 3 | Vytvořen tým | ✅ |
 | 3 | Popsány klíčové user stories | ✅ |
 | 3 | Git repozitář, úvodní commit | ✅ |
-| 4 | Aktéři, produkty, business use-cases | ⬜ |
+| 4 | Aktéři, produkty, business use-cases | ✅ |
 | 6 | Návrh backendu (endpointy, datový model) | ⬜ |
 | 7 | Technické řešení IoT části | ⬜ |
 | 7 | Základní implementace backendu | ⬜ |
