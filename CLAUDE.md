@@ -89,8 +89,8 @@ Aktéři: **Provozovatel**, **Game master**, **Hráč** (jen fyzicky ovládá p�
 |---|---|---|---|
 | 3 | Vytvořen tým | 2 | ✅ |
 | 3 | Popsány klíčové user stories | 2 | ✅ |
-| 3 | Git repozitář založen, odkázán na portále, úvodní commit | 2 | ⏳ **aktuální** |
-| 4 | Popsáni klíčoví aktéři, produkty a business use-cases | 2 | ⏳ text hotový, vložit do uuBookKitu |
+| 3 | Git repozitář založen, odkázán na portále, úvodní commit | 2 | ✅ https://github.com/BoraY-dev/escape-room-iot |
+| 4 | Popsáni klíčoví aktéři, produkty a business use-cases | 2 | ⏳ **aktuální** – text hotový, vložit do uuBookKitu |
 | 6 | Návrh backendu (endpointy, datový model) | 2 | ⬜ |
 | 7 | Navrženo technické řešení IoT části | 2 | ⬜ |
 | 7 | Základní implementace backendu | 2 | ⬜ |
