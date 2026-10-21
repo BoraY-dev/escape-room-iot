@@ -108,7 +108,8 @@ escape-room-iot/
 ├── CLAUDE.md
 ├── README.md
 ├── .gitignore
-├── docs/        # zadani.md, 01-business-request.md, 02-business-model.md, 03-application-model.md
+├── docs/        # zadani.md, 01-business-request.md, 02-business-model.md, 03-application-model.md,
+│                # 04-project-management.md
 ├── iot-node/    # firmware Core Module (README zatím)
 ├── gateway/     # flows.json, README s instalací a autostartem
 ├── server/      # Express.js: package.json, src/index.js (GET /health)

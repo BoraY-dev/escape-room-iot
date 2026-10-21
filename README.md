@@ -27,7 +27,7 @@ z pravidel ve webové aplikaci a game master má pod kontrolou celý průběh hr
 
 | Složka | Obsah |
 |---|---|
-| `docs/` | Dokumentace (Business Request, Business Model, Application Model) |
+| `docs/` | Dokumentace (Business Request, Business Model, Application Model, řízení projektu) |
 | `iot-node/` | Firmware pro HARDWARIO Core Module |
 | `gateway/` | Node-RED flow a konfigurace automatického startu |
 | `server/` | Backend (Express.js) |
