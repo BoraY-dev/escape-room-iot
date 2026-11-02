@@ -3,6 +3,8 @@
 Semestrální projekt z předmětu **Internet of Things** (Unicorn University).
 Celé zadání je v `docs/zadani.md`, user stories v `docs/01-business-request.md`,
 aktéři, produkty a use-cases v `docs/02-business-model.md`.
+Odevzdává se v **uuManagementKit**; která část patří na kterou stránku a co zbývá doplnit,
+je v `docs/uumk-map.md`.
 
 ## Jak se mnou pracovat (DŮLEŽITÉ)
 
@@ -116,7 +118,7 @@ escape-room-iot/
 ├── README.md
 ├── .gitignore
 ├── docs/        # zadani.md, 01-business-request.md, 02-business-model.md, 03-application-model.md,
-│                # 04-project-management.md
+│                # 04-project-management.md, uumk-map.md
 ├── iot-node/    # firmware Arduino Mega 2560 (README zatím)
 ├── gateway/     # flows.json, README s instalací a autostartem
 ├── server/      # Express.js: package.json, src/index.js (GET /health)
