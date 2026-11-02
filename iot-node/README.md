@@ -1,15 +1,21 @@
-# IoT Node (HARDWARIO Core Module)
+# IoT Node (Arduino Mega 2560)
 
-Firmware pro HARDWARIO Core Module (tlačítko, 3osý akcelerometr, teploměr).
+Firmware pro Arduino Mega 2560 (Arduino C++).
 
-## Vytvoření projektu
-1. Ve VS Code nainstaluj rozšíření **HARDWARIO Code** (TOWER Extension).
-2. Vytvoř nový firmware projekt ze skeletonu přímo do této složky.
-3. Sestav a nahraj firmware přes USB.
+## Hardware
+- **tlačítko** – žádost o nápovědu / vstup hádanky,
+- **akcelerometr GY-521** – náklon a pohyb předmětu,
+- **termistor** – teplota,
+- **LED** – výstup (např. signalizace vyřešené hádanky).
 
-## Co bude node posílat přes UART (návrh)
+## Vývoj
+- Arduino IDE, nebo PlatformIO (rozšíření VS Code).
+- Firmware se nahrává přes USB; stejný kabel slouží ke komunikaci s gateway (sériová linka).
+
+## Co bude node posílat a přijímat (návrh)
 - `button` – stisk tlačítka (okamžitě),
 - `motion` – naklonění / pohyb podle akcelerometru (okamžitě, při překročení prahu),
-- `temperature` – měření teploty (každých 10 s; downsampling řeší gateway).
+- `temperature` – měření teploty (každých ~10 s; downsampling řeší gateway),
+- povely z gateway – např. rozsvícení / zhasnutí LED.
 
 Formát zpráv bude upřesněn v milníku „Navrženo technické řešení IoT části“ (týden 7).

@@ -3,22 +3,24 @@
 Semestrální projekt z předmětu **Internet of Things**.
 
 IoT platforma pro únikové hry. Provozovatelé mohou stavět a měnit hádanky bez programování:
-zařízení v místnosti (HARDWARIO Core Module) se připojí ke gateway, logika hádanek se složí
+zařízení v místnosti (Arduino Mega 2560) se připojí ke gateway, logika hádanek se složí
 z pravidel ve webové aplikaci a game master má pod kontrolou celý průběh hry – může ji sledovat
 živě a kdykoliv zasáhnout.
 
 ## Architektura
 
 ```
-[IoT Node]  --UART/USB-->  [Gateway: Node-RED]  --HTTPS-->  [Cloud: Express.js API]  <--  [Frontend: React]
- (Core Module)              (Raspberry Pi)                    (databáze)                   (provozovatel, game master)
- tlačítko                   - vyhodnocení pravidel
- akcelerometr               - downsampling teploty
- teploměr                   - fronta neodeslaných dat
+[IoT Node]  <--USB serial-->  [Gateway: Node-RED]  --HTTPS-->  [Cloud: Express.js API]  <--  [Frontend: React]
+ (Arduino Mega 2560)           (Raspberry Pi 5)                  (MongoDB Atlas)              (provozovatel, game master)
+ tlačítko                      - vyhodnocení pravidel
+ akcelerometr GY-521           - downsampling teploty
+ termistor                     - perzistentní fronta dat
+ LED (výstup)                  - povely pro node
 ```
 
-- **IoT Node** – HARDWARIO Core Module (tlačítko, 3osý akcelerometr, teploměr). Posílá události a měření přes UART.
-- **Gateway** – Node-RED na Raspberry Pi. Vyhodnocuje pravidla hádanek lokálně (okamžitá odezva, funguje i bez internetu),
+- **IoT Node** – Arduino Mega 2560 (tlačítko, akcelerometr GY-521, termistor, LED). Posílá události a měření
+  po sériové lince přes USB a přijímá povely z gateway (např. rozsvícení LED).
+- **Gateway** – Node-RED na Raspberry Pi 5. Vyhodnocuje pravidla hádanek lokálně (okamžitá odezva, funguje i bez internetu),
   provádí downsampling teploty, ukládá data a odesílá je do cloudu. Startuje automaticky po zapnutí zařízení.
 - **Cloud backend** – Express.js REST API. Registrace a autentizace gateway, ukládání událostí a měření, správa místností, hádanek a her.
 - **Frontend** – React. Editor hádanek, živý přehled hry pro game mastera, přehled zařízení a statistiky.
@@ -28,7 +30,7 @@ z pravidel ve webové aplikaci a game master má pod kontrolou celý průběh hr
 | Složka | Obsah |
 |---|---|
 | `docs/` | Dokumentace (Business Request, Business Model, Application Model, řízení projektu) |
-| `iot-node/` | Firmware pro HARDWARIO Core Module |
+| `iot-node/` | Firmware pro Arduino Mega 2560 |
 | `gateway/` | Node-RED flow a konfigurace automatického startu |
 | `server/` | Backend (Express.js) |
 | `client/` | Frontend (React + Vite) |

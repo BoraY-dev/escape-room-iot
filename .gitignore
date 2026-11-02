@@ -15,7 +15,6 @@ gateway/*_cred.json
 gateway/.config.*.json
 gateway/.flows*.json.backup
 
-# HARDWARIO firmware build
-iot-node/obj/
-iot-node/out/
+# Arduino / PlatformIO firmware build
+iot-node/.pio/
 iot-node/build/

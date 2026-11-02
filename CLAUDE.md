@@ -7,7 +7,7 @@ aktéři, produkty a use-cases v `docs/02-business-model.md`.
 ## Jak se mnou pracovat (DŮLEŽITÉ)
 
 Jsem student; software (dokumentace, backend, frontend, cloud) dělám sám, hardware (IoT Node)
-dělá kolega – viz `docs/04-project-management.md`. Chci, aby práce šla rychle,
+dělá kolega David Král – viz `docs/04-project-management.md`. Chci, aby práce šla rychle,
 ale zároveň se při ní **naučit, co se děje**. Proto:
 
 1. **Před každým krokem** v 1–3 větách řekni, co uděláš a proč.
@@ -32,7 +32,8 @@ komentáře v kódu a dokumentaci česky.
 - Windows, VS Code, terminál **PowerShell** (příkazy piš pro PowerShell, ne pro bash).
 - Projekt je ve složce `C:\Users\borac\Unicorn\escape-room-iot`.
 - Node.js LTS, Git, GitHub (autentizace přes Git Credential Manager v prohlížeči).
-- IoT Node: HARDWARIO Core Module, programuje se ve VS Code přes rozšíření **HARDWARIO Code**.
+- IoT Node: **Arduino Mega 2560**, Arduino C++ (Arduino IDE nebo PlatformIO).
+- Gateway: **Raspberry Pi 5** s Node-RED.
 
 ## Vize projektu
 
@@ -46,16 +47,17 @@ Aktéři: **Provozovatel**, **Game master**, **Hráč** (jen fyzicky ovládá p�
 ## Architektura
 
 ```
-[IoT Node]  --UART/USB-->  [Gateway: Node-RED]  --HTTPS-->  [Backend: Express.js]  <--  [Frontend: React]
- Core Module                Raspberry Pi / notebook           + databáze
- tlačítko                   - lokální vyhodnocení pravidel
- akcelerometr               - downsampling teploty
- teploměr                   - fronta neodeslaných dat
+[IoT Node]  <--USB serial-->  [Gateway: Node-RED]  --HTTPS-->  [Backend: Express.js]  <--  [Frontend: React]
+ Arduino Mega 2560             Raspberry Pi 5                    + MongoDB Atlas
+ tlačítko                      - lokální vyhodnocení pravidel
+ akcelerometr GY-521           - downsampling teploty
+ termistor                     - perzistentní fronta dat
+ LED (výstup)                  - povely pro node (LED)
 ```
 
 | Část | Technologie | Složka |
 |---|---|---|
-| IoT Node | HARDWARIO Core Module (C, SDK TOWER) | `iot-node/` |
+| IoT Node | Arduino Mega 2560 (Arduino C++, Arduino IDE / PlatformIO) | `iot-node/` |
 | Gateway | Node-RED + `node-red-node-serialport` + `node-red-dashboard` | `gateway/` |
 | Backend | Node.js + Express.js (REST API přes HTTPS) | `server/` |
 | Frontend | React + Vite | `client/` |
@@ -80,12 +82,13 @@ Aktéři: **Provozovatel**, **Game master**, **Hráč** (jen fyzicky ovládá p�
 |---|---|---|
 | Kde se vyhodnocují pravidla hádanek | Na **gateway**; cloud pravidla ukládá, gateway si je stahuje | Okamžitá odezva pro hráče, hra běží i bez internetu |
 | Co se posílá do cloudu | Herní události (vyřešení, nápověda, ruční zásah) hned; teplota po downsamplingu | Události jsou důležité živě, teplota ne |
-| Komunikace node → gateway | USB/UART (1 node na gateway); Radio Dongle volitelně později | Jednodušší start |
+| HW IoT Node | Arduino Mega 2560 + tlačítko, akcelerometr GY-521, termistor, LED | Rozhodnutí týmu (HW dělá David); zadání jiný mikrokontrolér povoluje – **ověřit s vyučujícím povinný nákup HARDWARIO Core Module** |
+| Komunikace node ↔ gateway | Sériová linka přes USB, obousměrně (události nahoru, povely dolů); více nodů přes další USB porty / hub; rádio 868 MHz volitelně | Jednoduché, spolehlivé |
 | Databáze | MongoDB (Atlas free tier) – **potvrzeno** | Snadné nasazení zdarma |
 | Rozsah MVP | US01–US04, US09–US12, US14–US17; ostatní jako rozšíření | Malý tým, software dělám sám |
 | Role teploměru | (1) podmínka hádanky – okamžitá hodnota, bez downsamplingu; (2) monitoring teploty místnosti – downsampling na gateway (měření à 10 s → 1 hodnota / 5 min) | Downsampling dává smysl jen u průběžné veličiny; tlačítko a náklon jsou jednorázové události. Strategie (průměr/medián) se zdůvodní v týdnu 7 |
 | Metoda řízení | Kanban přes GitHub Projects | Malý tým s nepravidelnou prací, sprinty by byly zbytečná režie |
-| Rozdělení práce | Software já, hardware (Core Module, firmware, RPi) kolega; gateway sdílená – k potvrzení | Viz `docs/04-project-management.md` |
+| Rozdělení práce | Software já, hardware (Arduino, firmware, RPi) David Král; gateway sdílená – k potvrzení | Viz `docs/04-project-management.md` |
 
 ## Milníky
 
@@ -114,7 +117,7 @@ escape-room-iot/
 ├── .gitignore
 ├── docs/        # zadani.md, 01-business-request.md, 02-business-model.md, 03-application-model.md,
 │                # 04-project-management.md
-├── iot-node/    # firmware Core Module (README zatím)
+├── iot-node/    # firmware Arduino Mega 2560 (README zatím)
 ├── gateway/     # flows.json, README s instalací a autostartem
 ├── server/      # Express.js: package.json, src/index.js (GET /health)
 └── client/      # React + Vite

@@ -1,6 +1,6 @@
 # Gateway (Node-RED)
 
-Gateway běží jako Node-RED flow na Raspberry Pi. IoT Node je připojen přes USB (UART).
+Gateway běží jako Node-RED flow na Raspberry Pi 5. IoT Node (Arduino Mega 2560) je připojen přes USB (sériová linka).
 
 ## Úlohy gateway
 - čtení zpráv z IoT Node (`node-red-node-serialport`),

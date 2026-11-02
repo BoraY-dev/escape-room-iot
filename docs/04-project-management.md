@@ -5,7 +5,7 @@
 | Člen | Odpovědnost |
 |---|---|
 | **Bora Yildirim** | dokumentace (uuApp Framework), backend (Express.js, MongoDB), frontend (React), nasazení v cloudu, Git repozitář |
-| **David Král** | hardware: nákup a zapojení HARDWARIO Core Module, firmware IoT Node, příprava Raspberry Pi |
+| **David Král** | hardware: zapojení Arduino Mega 2560 se senzory, firmware IoT Node, příprava Raspberry Pi 5 |
 
 Gateway (Node-RED) je na rozhraní obou částí – rozdělení je **návrh, k potvrzení**:
 
