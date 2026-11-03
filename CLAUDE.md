@@ -91,6 +91,9 @@ Aktéři: **Provozovatel**, **Game master**, **Hráč** (jen fyzicky ovládá p�
 | Role teploměru | (1) podmínka hádanky – okamžitá hodnota, bez downsamplingu; (2) monitoring teploty místnosti – downsampling na gateway (měření à 10 s → 1 hodnota / 5 min) | Downsampling dává smysl jen u průběžné veličiny; tlačítko a náklon jsou jednorázové události. Strategie (průměr/medián) se zdůvodní v týdnu 7 |
 | Metoda řízení | Kanban přes GitHub Projects | Malý tým s nepravidelnou prací, sprinty by byly zbytečná režie |
 | Rozdělení práce | Software já, hardware (Arduino, firmware, RPi) David Král; gateway sdílená – k potvrzení | Viz `docs/04-project-management.md` |
+| Živý přehled hry | Frontend se dotazuje (polling) každé 2 s na `game/getCurrent` (stav hry, upozornění i nové události) | Jednoduché na implementaci i nasazení; WebSockety lze doplnit později beze změny commandů |
+| Povely z webu pro gateway | Fronta `gatewayCommand` v cloudu, gateway si ji vyzvedává | Gateway je za NAT, cloud ji nemůže volat; při výpadku povely počkají |
+| Oprávnění Operators | Provozovatel smí i řídit hru (vše co game master) | V malé provozovně hru často řídí majitel |
 
 ## Milníky
 
