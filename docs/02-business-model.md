@@ -124,6 +124,20 @@ classDiagram
   Zarizeni "1" --> "*" Mereni
 ```
 
+### Product Attributes
+
+| Product Name | Attributes |
+|---|---|
+| **Provozovna** | název |
+| **Místnost** | název, popis, aktuální hra |
+| **Gateway** | název, stav (čeká na registraci, aktivní, zablokovaná), poslední kontakt, stažená revize pravidel |
+| **Zařízení** | hardwarové označení, typ, srozumitelný název, poslední kontakt, poslední hodnota |
+| **Scénář** | časový limit, tlačítko pro nápovědu, revize |
+| **Hádanka** | název, poznámka pro game mastera, pořadí, pravidla (událost, podmínka, akce) |
+| **Hra** | stav, revize scénáře, časový limit, čas začátku, pauzy a konce, počet nápověd, stav jednotlivých hádanek |
+| **Událost** | typ, zdroj (gateway, uživatel, systém), detail, čas vzniku |
+| **Měření** | agregovaná teplota, počet vzorků, časové okno |
+
 ---
 
 ## Stránka: Business use cases
