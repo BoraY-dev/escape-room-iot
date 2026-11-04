@@ -69,20 +69,9 @@ Specifické chyby: **400** (neplatný obsah), **404** (odkazovaný objekt neexis
 
 ---
 
-## 2. Předpokládaný datový model
+## 2. Datový model
 
-> Commandy stojí na těchto kolekcích a atributech. **Datový model navrhuje Bora.** Kde se jeho
-> Persistence Layer liší, názvy v commandech se mu přizpůsobí.
-
-| Kolekce | Atributy, které commandy používají |
-|---|---|
-| `room` | `venueId`, `name`, `description`, `gatewayId`, `currentGameId` |
-| `device` | `venueId`, `roomId`, `hwId` (označení na nodu, např. `btn1`), `type`, `name`, `lastSeenAt`, `lastValue` |
-| `scenario` | `venueId`, `roomId` (unikátní), `timeLimitMin`, `hintDeviceId`, `revision` |
-| `puzzle` | `venueId`, `roomId`, `name`, `description`, `order`, `ruleList` |
-| `game` | `venueId`, `roomId`, `scenarioRevision`, `state`, `timeLimitMin`, `startedAt`, `pausedAt`, `pausedDurationSec`, `endedAt`, `hintCount`, `puzzleStateList` |
-| `event` | `venueId`, `roomId`, `gameId`, `deviceId`, `puzzleId`, `type`, `value`, `source` (`gateway` \| `user`), `occurredAt` |
-| `gatewayCommand` | `gatewayId`, `type`, `payload`, `state` (`pending` \| `delivered`): fronta povelů pro gateway, viz [kapitola 8](#8-rozhraní-ke-gateway) |
+> Kolekce, atributy, indexy a retence jsou v [`persistence-layer.md`](persistence-layer.md).
 
 **Stavy hry** (životní cyklus z Business Modelu → hodnota v kódu):
 
@@ -101,10 +90,10 @@ Specifické chyby: **400** (neplatný obsah), **404** (odkazovaný objekt neexis
 |---|---|---|
 | `button` | vstup | `press` |
 | `accelerometer` | vstup | `tilt` (úhel 0–180 °), `move` |
-| `thermometer` | vstup | `temperature` (°C) |
+| `thermometer` | vstup | `temperature` (°C): vyhodnocuje se jen na gateway, do cloudu jde po downsamplingu jako `measurement`, ne jako událost |
 | `led` | výstup | přijímá akci `setLed` |
 
-**Limity použité ve validaci** (k sladění s Borovým Limit Listem): místností na provozovnu 50,
+**Limity použité ve validaci** jsou v [Limit Listu](persistence-layer.md#limit-list): místností na provozovnu 50,
 hádanek ve scénáři 50, pravidel v hádance 10, akcí v pravidle 5, `timeLimitMin` 5–240 min.
 
 ---
@@ -130,7 +119,7 @@ const roomCreateDtoInType = shape({
 ```json
 {
   "id": "6543a1...", "name": "Pirátská kajuta", "description": "",
-  "gatewayId": null, "currentGameId": null,
+  "gateway": null, "currentGameId": null,
   "uuAppErrorMap": {}
 }
 ```
@@ -610,7 +599,7 @@ upozornění a poslední události.
 ```js
 const gameGetCurrentDtoInType = shape({
   roomId:      id().isRequired(),
-  eventsSince: datetime()          // jen události novější než tento čas; bez něj posledních 20
+  eventsSince: datetime()          // jen události PŘIJATÉ cloudem po tomto čase (createdAt); bez něj posledních 20
 });
 ```
 
@@ -626,8 +615,8 @@ const gameGetCurrentDtoInType = shape({
   ],
   "eventList": [
     { "type": "deviceEvent", "deviceName": "Víko truhly", "value": { "event": "tilt", "value": 52 },
-      "source": "gateway", "occurredAt": "..." },
-    { "type": "puzzleSolved", "puzzleId": "...", "source": "gateway", "occurredAt": "..." }
+      "source": "gateway", "occurredAt": "...", "createdAt": "..." },
+    { "type": "puzzleSolved", "puzzleId": "...", "source": "gateway", "occurredAt": "...", "createdAt": "..." }
   ],
   "uuAppErrorMap": {}
 }
@@ -641,6 +630,9 @@ const gameGetCurrentDtoInType = shape({
    a vloží povel `stopGame`. Stejná kontrola běží na serveru každých 5 s, takže hra vyprší, i když se nikdo nedívá.
 3. Sestaví upozornění: žádost o nápovědu (událost `hintRequested` z posledních 2 minut), vypršení času, offline zařízení a gateway.
 4. Přidá události seřazené podle `occurredAt`.
+
+Frontend posílá v `eventsSince` nejvyšší `createdAt`, který dostal. Filtr **nesmí** používat `occurredAt`: události
+z výpadku přijdou se starým časem vzniku a polling by je přeskočil.
 
 Upozornění na žádost o nápovědu svítí 2 minuty od stisku tlačítka. Game master nápovědu dává hlasem
 nebo přes obrazovku, mimo aplikaci. Potvrzení nápovědy v aplikaci (`game/giveHint`) je
@@ -670,6 +662,16 @@ Události od gateway, které **mění hru** (zpracuje je Davidův command pro ud
 | `puzzleSolved` | hádanka `solved`, `solvedBy: "gateway"`; byla-li poslední, hra `completed` |
 | `hintRequested` | `hintCount += 1` → upozornění pro game mastera |
 | jakákoli událost zařízení | aktualizuje `device.lastSeenAt` a `lastValue`, uloží se pro živý přehled |
+
+Požadavky na Davidovy commandy, které z datového modelu vyplývají:
+
+- **Online stav zařízení nastavuje heartbeat.** Tlačítko může mlčet celou hru a teplota chodí po 5 minutách,
+  takže samotné události by zařízení označily za offline. Heartbeat musí hlásit i zařízení, která node vidí.
+- **Každá událost má `gatewayEventId`** (UUID přidělené na gateway). Opakované odeslání stejné události po výpadku
+  se neuloží znovu a nezvýší podruhé `hintCount`. Měření chrání dvojice `deviceId` + `windowStart`.
+- **Povely se potvrzují.** `delivered` se nastaví až po potvrzení od gateway, jinak by se povel ztratil, když se ztratí odpověď.
+- **Pozdě doručené události** se ukládají vždy, ale hru změní jen tehdy, když `gameId` odpovídá hře, která ještě neskončila.
+- **Webová aplikace potřebuje `gateway/create` a `gateway/delete`**: `room/delete` bez smazání gateway neprojde.
 
 ---
 
