@@ -8,5 +8,6 @@
 
 ## Podstránky (návrh backendu, větev `backend-design`)
 
+- [Persistence Layer](03-application-model/persistence-layer.md) – kolekce MongoDB, indexy, retence, limity, DAO metody
 - [Application Profiles](03-application-model/application-profiles.md) – role Operators, GameMasters, Gateways
 - [Command List – webová aplikace](03-application-model/command-list-webapp.md) – místnosti, zařízení, scénář, hádanky, řízení hry

@@ -94,6 +94,11 @@ Aktéři: **Provozovatel**, **Game master**, **Hráč** (jen fyzicky ovládá p�
 | Živý přehled hry | Frontend se dotazuje (polling) každé 2 s na `game/getCurrent` (stav hry, upozornění i nové události) | Jednoduché na implementaci i nasazení; WebSockety lze doplnit později beze změny commandů |
 | Povely z webu pro gateway | Fronta `gatewayCommand` v cloudu, gateway si ji vyzvedává | Gateway je za NAT, cloud ji nemůže volat; při výpadku povely počkají |
 | Oprávnění Operators | Provozovatel smí i řídit hru (vše co game master) | V malé provozovně hru často řídí majitel |
+| Styl endpointů | uuCommand: `POST /room/create`, `GET /room/list`, dtoIn/dtoOut, `uuAppErrorMap` | Odpovídá šabloně Command List v uuMK |
+| Přístup k databázi | Mongoose | Schémata s validací přímo odpovídají Persistence Layer |
+| Vazba místnost–gateway | Jen `gateway.roomId` (unikátní), bez `room.gatewayId` | Jeden zdroj pravdy; při výměně gateway zůstanou zařízení i pravidla u místnosti |
+| Opakované odeslání z gateway | Unikátní `gatewayEventId` u událostí, `deviceId` + `windowStart` u měření | Po výpadku se data posílají znovu a nesmí vzniknout duplicity |
+| Retence v cloudu | `event` a `measurement` 90 dní (TTL), doručené `gatewayCommand` 7 dní, výsledky her trvale | Atlas free tier má 512 MB; výsledky zůstávají v `game` |
 
 ## Milníky
 
