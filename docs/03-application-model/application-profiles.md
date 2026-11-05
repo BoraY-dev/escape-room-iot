@@ -43,7 +43,7 @@ Zaměstnanec provozovny, který řídí jednotlivé hry.
 
 ### Gateways
 
-Gateway s Node-RED v místnosti (systémový aktér). Volá jen commandy pro gateway, které navrhuje David:
+Gateway s Node-RED v místnosti (systémový aktér). Volá jen commandy pro gateway:
 registrace, stažení konfigurace a pravidel, odesílání událostí a měření, heartbeat a převzetí povelů.
 **Žádný command webové aplikace volat nesmí.**
 
@@ -71,7 +71,7 @@ jednorázovým registračním kódem (BUC01).
 | `scenario/get` | ano | ano | ne |
 | `game/reset`, `game/start`, `game/pause`, `game/resume`, `game/stop` | ano | ano | ne |
 | `game/solvePuzzle`, `game/unsolvePuzzle`, `game/getCurrent` | ano | ano | ne |
-| commandy pro gateway (Davidův seznam) | ne | ne | ano |
+| commandy pro gateway | ne | ne | ano |
 
 ## Otevřené body
 

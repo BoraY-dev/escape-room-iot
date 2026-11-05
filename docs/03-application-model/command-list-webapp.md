@@ -157,7 +157,7 @@ const roomGetDtoInType = shape({ id: id().isRequired() });
 }
 ```
 
-`online` znamená, že `lastSeenAt` není starší než 60 s (2× navrhovaný heartbeat 30 s, domluvit s Davidem).
+`online` znamená, že `lastSeenAt` není starší než 60 s (2× navrhovaný heartbeat 30 s).
 
 ### room/list
 
@@ -212,7 +212,7 @@ const roomDeleteDtoInType = shape({ id: id().isRequired() });
 
 ## 4. Zařízení
 
-Zařízení **zakládá gateway**: nahlásí zařízení připojeného nodu (BUC02 krok 2, Davidova část).
+Zařízení **zakládá gateway**: nahlásí zařízení připojeného nodu (BUC02 krok 2, commandy pro gateway).
 Provozovatel je jen srozumitelně pojmenuje.
 
 ### device/list
@@ -263,7 +263,7 @@ Každá místnost má právě jeden scénář: sadu hádanek a časový limit hr
 a hra je dokončená, když jsou vyřešené všechny.
 
 **Revize scénáře.** Každá změna scénáře nebo hádanky zvýší `scenario.revision`. Gateway porovná revizi se svou,
-a když se liší, stáhne si nová pravidla (Davidův command pro konfiguraci).
+a když se liší, stáhne si nová pravidla (command gateway pro konfiguraci).
 
 **Změny během hry jsou zakázané.** Když hra běží nebo je pozastavená, commandy `scenario/update`
 a `puzzle/*` vrátí `gameInProgress` (409). Gateway vyhodnocuje pevnou sadu pravidel, takže změna uprostřed hry by zmátla hráče.
@@ -642,9 +642,9 @@ nebo přes obrazovku, mimo aplikaci. Potvrzení nápovědy v aplikaci (`game/giv
 
 ## 8. Rozhraní ke gateway
 
-> **Domluvit s Davidem.** Webové commandy gateway nevolají přímo, protože gateway je v provozovně za routerem
+> Webové commandy gateway nevolají přímo, protože gateway je v provozovně za routerem
 > a cloud se k ní nedostane. Povely ukládají do fronty `gatewayCommand` a gateway si je vyzvedává
-> Davidovým commandem (pravidelným dotazem nebo v odpovědi na heartbeat).
+> commandem pro gateway (pravidelným dotazem nebo v odpovědi na heartbeat).
 
 | `type` | `payload` | Co gateway udělá |
 |---|---|---|
@@ -655,7 +655,7 @@ nebo přes obrazovku, mimo aplikaci. Potvrzení nápovědy v aplikaci (`game/giv
 | `solvePuzzle` | `gameId`, `puzzleId`, `runActions` | označí hádanku vyřešenou, případně provede její akce |
 | `unsolvePuzzle` | `gameId`, `puzzleId` | označí hádanku nevyřešenou |
 
-Události od gateway, které **mění hru** (zpracuje je Davidův command pro události, tady jsou kvůli úplnosti):
+Události od gateway, které **mění hru** (zpracuje je command gateway pro události, tady jsou kvůli úplnosti):
 
 | Událost z gateway | Dopad na hru |
 |---|---|
@@ -663,7 +663,7 @@ Události od gateway, které **mění hru** (zpracuje je Davidův command pro ud
 | `hintRequested` | `hintCount += 1` → upozornění pro game mastera |
 | jakákoli událost zařízení | aktualizuje `device.lastSeenAt` a `lastValue`, uloží se pro živý přehled |
 
-Požadavky na Davidovy commandy, které z datového modelu vyplývají:
+Požadavky na commandy pro gateway, které z datového modelu vyplývají:
 
 - **Online stav zařízení nastavuje heartbeat.** Tlačítko může mlčet celou hru a teplota chodí po 5 minutách,
   takže samotné události by zařízení označily za offline. Heartbeat musí hlásit i zařízení, která node vidí.
@@ -688,4 +688,4 @@ Tyto commandy se navrhnou, až na ně dojde:
 | `user/create`, `user/assignRoom` | správa game masterů | US07 |
 
 Commandy pro správu gateway z webu (`gateway/create` s registračním kódem, `gateway/list`) patří k registraci
-gateway (BUC01), kterou navrhuje David. Pokud se domluvíme jinak, doplním je sem.
+gateway (BUC01) a jsou popsané v Command Listu pro gateway.
