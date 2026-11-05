@@ -9,7 +9,7 @@ je v `docs/uumk-map.md`.
 ## Jak se mnou pracovat (DŮLEŽITÉ)
 
 Jsem student; software (dokumentace, backend, frontend, cloud) dělám sám, hardware (IoT Node)
-dělá kolega David Král – viz `docs/04-project-management.md`. Chci, aby práce šla rychle,
+dělá kolega David Král; v týmu je i Vítek Novotný (role k doplnění) – viz `docs/04-project-management.md`. Chci, aby práce šla rychle,
 ale zároveň se při ní **naučit, co se děje**. Proto:
 
 1. **Před každým krokem** v 1–3 větách řekni, co uděláš a proč.

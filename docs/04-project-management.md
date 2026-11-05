@@ -6,6 +6,7 @@
 |---|---|
 | **Bora Yildirim** | dokumentace (uuApp Framework), backend (Express.js, MongoDB), frontend (React), nasazení v cloudu, Git repozitář |
 | **David Král** | hardware: zapojení Arduino Mega 2560 se senzory, firmware IoT Node, příprava Raspberry Pi 5 |
+| **Vítek Novotný** | *k doplnění* |
 
 Gateway (Node-RED) je na rozhraní obou částí – rozdělení je **návrh, k potvrzení**:
 
