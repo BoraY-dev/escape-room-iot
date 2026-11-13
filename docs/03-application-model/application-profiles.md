@@ -31,6 +31,7 @@ takže volající nezjistí ani to, že existuje.
 Majitel nebo správce provozovny, který místnosti staví a udržuje.
 
 - spravuje místnosti (`room/*`), pojmenovává zařízení (`device/update`), skládá scénář a hádanky (`scenario/*`, `puzzle/*`),
+- zakládá a odpojuje gateway místností (`gateway/create`, `gateway/delete`),
 - smí totéž co game master (`game/*`), protože v malé provozovně hru často řídí sám majitel.
 
 ### GameMasters
@@ -57,7 +58,7 @@ jednorázovým registračním kódem (BUC01).
 | **WebUsers** | Operators, GameMasters | lidé přihlášení do webové aplikace (JWT); commandy, které smí volat oba (čtení, řízení hry) |
 | **Devices** | Gateways | zařízení s tokenem gateway; všechny commandy pro gateway |
 
-## Matice oprávnění (commandy webové aplikace)
+## Matice oprávnění
 
 „ano“ = povoleno, „ne“ = odmítnuto s chybou `userNotAuthorized`.
 
@@ -71,7 +72,11 @@ jednorázovým registračním kódem (BUC01).
 | `scenario/get` | ano | ano | ne |
 | `game/reset`, `game/start`, `game/pause`, `game/resume`, `game/stop` | ano | ano | ne |
 | `game/solvePuzzle`, `game/unsolvePuzzle`, `game/getCurrent` | ano | ano | ne |
-| commandy pro gateway | ne | ne | ano |
+| `gateway/create`, `gateway/delete` | ano | ne | ne |
+| `gateway/register` | – | – | – |
+| `gateway/getConfig`, `gateway/heartbeat`, `gateway/sendEvents`, `gateway/sendMeasurements`, `gateway/getCommands`, `gateway/ackCommands` | ne | ne | ano |
+
+`gateway/register` nevyžaduje token žádného profilu: volá se před registrací a ověřuje se jednorázovým registračním kódem.
 
 ## Otevřené body
 
