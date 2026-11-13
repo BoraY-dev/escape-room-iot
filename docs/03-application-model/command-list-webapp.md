@@ -158,6 +158,7 @@ const roomGetDtoInType = shape({ id: id().isRequired() });
 ```
 
 `online` znamená, že `lastSeenAt` není starší než 60 s (2× navrhovaný heartbeat 30 s).
+Zařízení je online jen tehdy, když je online i gateway místnosti. Místnost bez gateway má všechna zařízení offline.
 
 ### room/list
 

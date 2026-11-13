@@ -72,7 +72,7 @@ Indexy: `{ email: 1 }` unikátní.
 | `registrationCodeExpiresAt` | date | ne | platnost kódu |
 | `tokenHash` | string | ne | hash přístupového tokenu |
 | `lastSeenAt` | date | ne | poslední kontakt; `online`, pokud není starší než 60 s |
-| `syncedScenarioRevision` | integer | ne | revize pravidel, kterou gateway naposledy stáhla |
+| `syncedScenarioRevision` | integer | ne | revize pravidel, kterou gateway v heartbeatu hlásí jako skutečně uloženou |
 
 Indexy: `{ roomId: 1 }` unikátní; `{ tokenHash: 1 }` unikátní, částečný (jen kde existuje).
 
@@ -236,7 +236,7 @@ Do limitu 512 MB se tak vejde několik místností, což MVP stačí.
 | `scenarioDao` | `create`, `getByRoom`, `update`, `incrementRevision`, `deleteByRoom` |
 | `puzzleDao` | `create`, `get`, `listByRoom`, `countByRoom`, `update`, `delete`, `deleteByRoom` |
 | `gameDao` | `create`, `get`, `updateState`, `setPuzzleState`, `incrementHintCount`, `listExpired`, `deleteByRoom` |
-| `eventDao` | `create`, `insertManyIgnoreDuplicates`, `listByGameSince`, `deleteByRoom` |
+| `eventDao` | `create`, `listByGatewayEventIds`, `createWithGameEffect`, `listByGameSince`, `deleteByRoom` |
 | `measurementDao` | `insertManyIgnoreDuplicates`, `listByRoom`, `deleteByRoom` |
 | `gatewayCommandDao` | `create`, `listPending`, `markDelivered`, `deleteByGateway` |
 
@@ -244,5 +244,8 @@ Poznámky k metodám:
 
 - `gameDao.updateState` podmiňuje zápis očekávaným stavem (`findOneAndUpdate({ _id, state: expected }, …)`),
   takže se dva souběžné zásahy nepřepíšou.
-- `insertManyIgnoreDuplicates` používá `insertMany` s `ordered: false`: duplicity odmítne unikátní index a zbytek dávky se uloží.
-  Efekty na hru (např. `hintCount`) se provedou jen u skutečně nově vložených událostí.
+- `eventDao.createWithGameEffect` uloží novou událost a její dopad na hru (např. `hintCount`) v jedné transakci MongoDB,
+  takže pád serveru mezi nimi nic neztratí. Událost s už uloženým `gatewayEventId` efekt nezopakuje.
+- `measurementDao.insertManyIgnoreDuplicates` používá `insertMany` s `ordered: false`: duplicity odmítne unikátní index
+  a zbytek dávky se uloží.
+- Záznam se stejným identifikátorem, ale jiným obsahem, není duplicita, ale konflikt (`eventIdConflict`, `measurementConflict`).
