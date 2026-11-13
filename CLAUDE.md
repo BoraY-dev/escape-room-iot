@@ -88,7 +88,7 @@ Aktéři: **Provozovatel**, **Game master**, **Hráč** (jen fyzicky ovládá p�
 | Komunikace node ↔ gateway | Sériová linka přes USB, obousměrně (události nahoru, povely dolů); více nodů přes další USB porty / hub; rádio 868 MHz volitelně | Jednoduché, spolehlivé |
 | Databáze | MongoDB (Atlas free tier) – **potvrzeno** | Snadné nasazení zdarma |
 | Rozsah MVP | US01–US04, US09–US12, US14–US17; ostatní jako rozšíření | Malý tým, software dělám sám |
-| Role teploměru | (1) podmínka hádanky – okamžitá hodnota, bez downsamplingu; (2) monitoring teploty místnosti – downsampling na gateway (měření à 10 s → 1 hodnota / 5 min) | Downsampling dává smysl jen u průběžné veličiny; tlačítko a náklon jsou jednorázové události. Strategie (průměr/medián) se zdůvodní v týdnu 7 |
+| Role teploměru | (1) podmínka hádanky – okamžitá hodnota, bez downsamplingu; (2) monitoring teploty místnosti – downsampling na gateway (měření à 10 s → 1 hodnota / 5 min) | Downsampling dává smysl jen u průběžné veličiny; tlačítko a náklon jsou jednorázové události. Strategie: **medián** za 5 min (UTC okna) – odolný vůči krátkým výkyvům (teploměr v ruce hráče, rušení) |
 | Metoda řízení | Kanban přes GitHub Projects | Malý tým s nepravidelnou prací, sprinty by byly zbytečná režie |
 | Rozdělení práce | Software já, hardware (Arduino, firmware, RPi) David Král; gateway sdílená – k potvrzení. Týden 6: datový model já, commandy webu a profily Vítek, commandy gateway Lukáš (převzato od Davida, který neodpovídal) | Viz `docs/04-project-management.md` |
 | Živý přehled hry | Frontend se dotazuje (polling) každé 2 s na `game/getCurrent` (stav hry, upozornění i nové události) | Jednoduché na implementaci i nasazení; WebSockety lze doplnit později beze změny commandů |
@@ -98,6 +98,7 @@ Aktéři: **Provozovatel**, **Game master**, **Hráč** (jen fyzicky ovládá p�
 | Přístup k databázi | Mongoose | Schémata s validací přímo odpovídají Persistence Layer |
 | Vazba místnost–gateway | Jen `gateway.roomId` (unikátní), bez `room.gatewayId` | Jeden zdroj pravdy; při výměně gateway zůstanou zařízení i pravidla u místnosti |
 | Opakované odeslání z gateway | Unikátní `gatewayEventId` u událostí, `deviceId` + `windowStart` u měření | Po výpadku se data posílají znovu a nesmí vzniknout duplicity |
+| Formát zpráv node ↔ gateway | JSON na řádek, 115 200 Bd; `hwId` = `<NODE_ID>.<zařízení>`; povely nastavují absolutní stav s `cid` + `ack` | Node-RED parsuje jedním uzlem, čitelné, rozšiřitelné; opakovaný povel je neškodný. Detail v `docs/03-application-model/iot-protocol.md` |
 | Retence v cloudu | `event` a `measurement` 90 dní (TTL), doručené `gatewayCommand` 7 dní, výsledky her trvale | Atlas free tier má 512 MB; výsledky zůstávají v `game` |
 
 ## Milníky
