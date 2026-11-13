@@ -20,7 +20,7 @@ Stav k 2. 11. 2026.
 | Main page | Overview (A4), životní cyklus hry | ✅ |
 | Processes | Process Diagram, Process–Products, BUC List Diagram | ❌ šablona |
 | Business actors | tabulka aktérů + diagram | ✅ |
-| Products | Product Overview (diagram vazeb + tabulka) | ✅; ❌ šablona „Product Name / Attributes“ – doplnit s datovým modelem (týden 6) |
+| Products | Product Overview (diagram vazeb + tabulka) | ✅; ⚠️ „Product Name / Attributes“ připraveno v `02-business-model.md`, vložit |
 | Business use cases | BUC List + BUC01–BUC10 na jedné stránce dle šablony | ✅ |
 
 Připomínka vyučujícího (25. 10.): aktéry, produkty a BUC převést do podstránek;
@@ -34,8 +34,8 @@ kardinality v diagramu produktů vyjadřují typy čar; Data binding je zatím t
 | Stránka | Obsah | Milník | Stav |
 |---|---|---|---|
 | Main page | Application Description (node, gateway, cloud, profily, toky dat, zabezpečení), Application Topology | – | ✅ |
-| Application Profiles | Role Profiles (Operators, GameMasters, Gateways), Role Group Profiles | 6 | ❌ |
-| Persistence Layer | Schema Diagram, Schema, Limit List, DAO Method List | 6 | ❌ šablona |
+| Application Profiles | Role Profiles (Operators, GameMasters, Gateways), Role Group Profiles | 6 | ⚠️ připraveno v `03-application-model/application-profiles.md`, vložit |
+| Persistence Layer | Schema Diagram, Schema, Limit List, DAO Method List | 6 | ⚠️ připraveno v `03-application-model/persistence-layer.md`, vložit |
 | Command List | uuCommand: dtoIn validace, dtoOut, chyby (`unsupportedKeys`, `invalidDtoIn`) | 6 | ❌ šablona |
 | User view entry points | vstupní body (routy) | 9 | ❌ |
 | Routes | Basic Info, props, Component Diagram, render pravidla | 9 | ❌ šablona |

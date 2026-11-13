@@ -9,7 +9,7 @@ je v `docs/uumk-map.md`.
 ## Jak se mnou pracovat (DŮLEŽITÉ)
 
 Jsem student; software (dokumentace, backend, frontend, cloud) dělám sám, hardware (IoT Node)
-dělá kolega David Král; v týmu je i Vítek Novotný (role k doplnění) – viz `docs/04-project-management.md`. Chci, aby práce šla rychle,
+dělá kolega David Král; v týmu jsou i Vítek Novotný a Lukáš – viz `docs/04-project-management.md`. Chci, aby práce šla rychle,
 ale zároveň se při ní **naučit, co se děje**. Proto:
 
 1. **Před každým krokem** v 1–3 větách řekni, co uděláš a proč.
@@ -90,7 +90,15 @@ Aktéři: **Provozovatel**, **Game master**, **Hráč** (jen fyzicky ovládá p�
 | Rozsah MVP | US01–US04, US09–US12, US14–US17; ostatní jako rozšíření | Malý tým, software dělám sám |
 | Role teploměru | (1) podmínka hádanky – okamžitá hodnota, bez downsamplingu; (2) monitoring teploty místnosti – downsampling na gateway (měření à 10 s → 1 hodnota / 5 min) | Downsampling dává smysl jen u průběžné veličiny; tlačítko a náklon jsou jednorázové události. Strategie (průměr/medián) se zdůvodní v týdnu 7 |
 | Metoda řízení | Kanban přes GitHub Projects | Malý tým s nepravidelnou prací, sprinty by byly zbytečná režie |
-| Rozdělení práce | Software já, hardware (Arduino, firmware, RPi) David Král; gateway sdílená – k potvrzení | Viz `docs/04-project-management.md` |
+| Rozdělení práce | Software já, hardware (Arduino, firmware, RPi) David Král; gateway sdílená – k potvrzení. Týden 6: datový model já, commandy webu a profily Vítek, commandy gateway Lukáš (převzato od Davida, který neodpovídal) | Viz `docs/04-project-management.md` |
+| Živý přehled hry | Frontend se dotazuje (polling) každé 2 s na `game/getCurrent` (stav hry, upozornění i nové události) | Jednoduché na implementaci i nasazení; WebSockety lze doplnit později beze změny commandů |
+| Povely z webu pro gateway | Fronta `gatewayCommand` v cloudu, gateway si ji vyzvedává | Gateway je za NAT, cloud ji nemůže volat; při výpadku povely počkají |
+| Oprávnění Operators | Provozovatel smí i řídit hru (vše co game master) | V malé provozovně hru často řídí majitel |
+| Styl endpointů | uuCommand: `POST /room/create`, `GET /room/list`, dtoIn/dtoOut, `uuAppErrorMap` | Odpovídá šabloně Command List v uuMK |
+| Přístup k databázi | Mongoose | Schémata s validací přímo odpovídají Persistence Layer |
+| Vazba místnost–gateway | Jen `gateway.roomId` (unikátní), bez `room.gatewayId` | Jeden zdroj pravdy; při výměně gateway zůstanou zařízení i pravidla u místnosti |
+| Opakované odeslání z gateway | Unikátní `gatewayEventId` u událostí, `deviceId` + `windowStart` u měření | Po výpadku se data posílají znovu a nesmí vzniknout duplicity |
+| Retence v cloudu | `event` a `measurement` 90 dní (TTL), doručené `gatewayCommand` 7 dní, výsledky her trvale | Atlas free tier má 512 MB; výsledky zůstávají v `game` |
 
 ## Milníky
 

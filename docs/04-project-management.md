@@ -5,8 +5,9 @@
 | Člen | Odpovědnost |
 |---|---|
 | **Bora Yildirim** | dokumentace (uuApp Framework), backend (Express.js, MongoDB), frontend (React), nasazení v cloudu, Git repozitář |
-| **David Král** | hardware: zapojení Arduino Mega 2560 se senzory, firmware IoT Node, příprava Raspberry Pi 5 |
-| **Vítek Novotný** | *k doplnění* |
+| **David Král** | hardware: zapojení Arduino Mega 2560 se senzory, firmware IoT Node, příprava Raspberry Pi 5; v týdnu 6 bez úkolu, nová práce od dalšího milníku |
+| **Vítek Novotný** | návrh commandů webové aplikace a Application Profiles (týden 6); další práce se určí podle milníku |
+| **Lukáš** *(příjmení doplnit)* | návrh commandů pro gateway (týden 6, převzato od Davida); další práce se určí podle milníku |
 
 Gateway (Node-RED) je na rozhraní obou částí – rozdělení je **návrh, k potvrzení**:
 
