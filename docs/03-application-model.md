@@ -6,7 +6,7 @@
 - **Technické řešení IoT části** (týden 7): formát zpráv přes UART, Node-RED flow, downsampling, retence dat.
 - **Návrh frontendu** (týden 9): routy, komponenty, wireframy.
 
-## Podstránky (návrh backendu, větev `backend-design`)
+## Podstránky (návrh backendu)
 
 - [Persistence Layer](03-application-model/persistence-layer.md) – kolekce MongoDB, indexy, retence, limity, DAO metody
 - [Application Profiles](03-application-model/application-profiles.md) – role Operators, GameMasters, Gateways
