@@ -55,7 +55,8 @@ sériová linka po USB je spolehlivá a ztráta je výjimečná.
 
 ### hello – ohlášení zařízení
 
-Po startu nodu a jako odpověď na `who`.
+Po startu nodu, jako odpověď na `who` a znovu, když se změní dostupnost zařízení (senzor selže nebo se obnoví).
+Obsahuje **jen funkční zařízení**.
 
 ```json
 {"t":"hello","node":"node1","fw":"1.0.0","devices":[{"id":"node1.btn1","type":"button"},{"id":"node1.acc1","type":"accelerometer"},{"id":"node1.temp1","type":"thermometer"},{"id":"node1.led1","type":"led"}]}
@@ -142,6 +143,7 @@ Akce pravidel vyhodnocených na gateway vedou také na `led`.
 | Node pošle neplatný JSON nebo neznámé `t` | gateway řádek zahodí a započítá do diagnostiky |
 | Gateway pošle neplatný povel | node pošle `err` s `badMessage` |
 | Povel na neznámé zařízení | node pošle `ack` s `ok:false` a `err:"unknownDevice"` |
+| Neznámý typ povelu (`t`) | node pošle `ack` s `ok:false` a `err:"unknownCommand"` |
 | Řádek delší než limit | příjemce zahazuje znaky až do nejbližšího `\n` |
 | Odpojený USB kabel | gateway přestane dostávat `hb`, po 15 s označí node za odpojený, port otevírá znovu každých 5 s |
 | Restart nodu | node pošle `hello`; gateway mu podle stavu hry znovu nastaví LED |
