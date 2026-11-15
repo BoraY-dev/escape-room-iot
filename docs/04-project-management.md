@@ -16,6 +16,16 @@ Gateway (Node-RED) je na rozhraní obou částí – rozdělení je **návrh, k 
 | instalace Node-RED na Raspberry Pi, automatický start (systemd), čtení dat přes UART | David Král |
 | vyhodnocení pravidel, downsampling, lokální úložiště, komunikace s cloudem (registrace, HTTPS) | Bora Yildirim |
 
+### Týden 7 – Navrženo technické řešení IoT části
+
+| Část | Kdo |
+|---|---|
+| formát zpráv node ↔ gateway, zdůvodnění downsamplingu a retence, sekvenční diagramy | Bora Yildirim |
+| Node-RED flow gateway (`iot-gateway.md`) | Lukáš |
+| zapojení hardwaru – podle datasheetů, k ověření na skutečném HW | Bora Yildirim (za Davida, bez odezvy) |
+| firmware IoT Node | Bora Yildirim (za Vítka, bez odezvy) |
+| kontrola celku a vložení do uuMK | Bora Yildirim |
+
 Rozhraní mezi částmi se domlouvá dokumentem, ne ústně:
 - **formát zpráv node → gateway** (UART) – navrhuje se v milníku „Technické řešení IoT části“ (týden 7),
 - **REST API gateway → cloud** – navrhuje se v milníku „Návrh backendu“ (týden 6).

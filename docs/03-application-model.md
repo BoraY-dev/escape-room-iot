@@ -12,3 +12,10 @@
 - [Application Profiles](03-application-model/application-profiles.md) – role Operators, GameMasters, Gateways
 - [Command List – webová aplikace](03-application-model/command-list-webapp.md) – místnosti, zařízení, scénář, hádanky, řízení hry
 - [Command List – gateway](03-application-model/command-list-gateway.md) – registrace, konfigurace, heartbeat, odesílání dat, povely
+
+## Podstránky (technické řešení IoT)
+
+- [Hardware IoT Node a gateway](03-application-model/iot-hardware.md) – součástky, piny, zapojení (podle datasheetů, k ověření)
+- [Firmware IoT Node](03-application-model/iot-node.md) – struktura programu, senzory, povely, chyby a zotavení
+- [IoT Gateway – Node-RED flow](03-application-model/iot-gateway.md) – bloky flow, SQLite fronta, odesílání, karanténa, povely, dashboard, autostart
+- [Komunikace IoT Node ↔ Gateway](03-application-model/iot-protocol.md) – formát zpráv, downsampling, retence, sekvenční diagramy

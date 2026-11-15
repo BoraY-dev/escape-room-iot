@@ -34,14 +34,14 @@ kardinality v diagramu produktů vyjadřují typy čar; Data binding je zatím t
 | Stránka | Obsah | Milník | Stav |
 |---|---|---|---|
 | Main page | Application Description (node, gateway, cloud, profily, toky dat, zabezpečení), Application Topology | – | ✅ |
-| Application Profiles | Role Profiles (Operators, GameMasters, Gateways), Role Group Profiles | 6 | ⚠️ připraveno v `03-application-model/application-profiles.md`, vložit |
-| Persistence Layer | Schema Diagram, Schema, Limit List, DAO Method List | 6 | ⚠️ připraveno v `03-application-model/persistence-layer.md`, vložit |
-| Command List | uuCommand: dtoIn validace, dtoOut, chyby (`unsupportedKeys`, `invalidDtoIn`) | 6 | ❌ šablona |
+| Application Profiles | Role Profiles (Operators, GameMasters, Gateways), Role Group Profiles | 6 | ✅ |
+| Persistence Layer | Schema Diagram, Schema, Limit List, DAO Method List | 6 | ✅ |
+| Command List | uuCommand: dtoIn validace, dtoOut, chyby (`unsupportedKeys`, `invalidDtoIn`) | 6 | ✅ |
 | User view entry points | vstupní body (routy) | 9 | ❌ |
 | Routes | Basic Info, props, Component Diagram, render pravidla | 9 | ❌ šablona |
 | Components | Basic Info, props, Component Diagram | 9 | ❌ šablona |
-| IoT Gateway | Node-RED flow, downsampling, fronta, retence | 7 | ❌ |
-| IoT Node | firmware, formát zpráv | 7 | ❌ |
+| IoT Gateway | Node-RED flow, downsampling, fronta, retence | 7 | ⚠️ uu5String připraven (z `iot-gateway.md` a `iot-protocol.md` kap. 6–8), vložit |
+| IoT Node | hardware, firmware, formát zpráv | 7 | ⚠️ uu5String připraven (z `iot-hardware.md`, `iot-node.md`, `iot-protocol.md` kap. 1–5), vložit |
 
 ## Co zbývá doplnit
 
