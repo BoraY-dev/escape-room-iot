@@ -152,7 +152,7 @@ const gatewayGetConfigDtoInType = shape({});
 {
   "gatewayId": "<id>", "roomId": "<id>", "serverTime": "2026-11-08T12:00:00Z",
   "heartbeatIntervalSec": 30, "commandPollIntervalSec": 2, "batchSize": 100,
-  "downsampling": { "sampleIntervalSec": 10, "windowSec": 300, "aggregation": "mean" },
+  "downsampling": { "sampleIntervalSec": 10, "windowSec": 300, "aggregation": "median" },
   "deviceList": [{ "id": "<id>", "hwId": "node1.btn1", "type": "button", "name": "Tlačítko" }],
   "scenario": { "id": "<id>", "revision": 7, "timeLimitMin": 60, "hintDeviceId": null, "puzzleList": [] },
   "currentGame": null,
@@ -170,7 +170,7 @@ Tato hodnota nedokazuje, že odpověď gateway přijala. Heartbeat hlásí reviz
 Gateway konfiguraci uloží atomicky na disk a při výpadku používá poslední úspěšnou kopii.
 Stahuje ji při startu a při rozdílu revize z heartbeat. Nesmí vyhodnocovat hru s jinou revizí;
 `resetRoom` nejprve zajistí správnou konfiguraci. Teplota se pro pravidla vyhodnocuje z okamžitých vzorků,
-pro monitoring se odesílá průměr za pětiminutové UTC okno (nižší objem dat, zachování trendu).
+pro monitoring se odesílá medián za pětiminutové UTC okno (odolný vůči krátkým výkyvům, nižší objem dat, zachování trendu).
 
 **Chyby:** `roomDoesNotExist`, `scenarioDoesNotExist` (404).
 
@@ -322,7 +322,7 @@ const gatewaySendMeasurementsDtoInType = shape({
 
 **Kroky:** ověří teploměr ve vlastní místnosti, konečné číselné hodnoty a dokončené okno
 `windowStart < windowEnd <= serverTime + 60 s`. Standard je UTC okno 300 s zarovnané na násobky pěti minut,
-interval `[windowStart, windowEnd)`. Při chybějících vzorcích se průměrují jen dostupné; bez vzorků záznam nevzniká.
+interval `[windowStart, windowEnd)`. Při chybějících vzorcích se medián počítá jen z dostupných; bez vzorků záznam nevzniká.
 Uloží s unikátním klíčem **`deviceId` + `windowStart`**, duplicity potvrdí bez dalšího vložení.
 Po odeslání se agregát nemění. Historické měření není důkaz aktuální online přítomnosti.
 `lastValue` teploměru lze aktualizovat novějším oknem jako `{ event: temperature, value }`;
