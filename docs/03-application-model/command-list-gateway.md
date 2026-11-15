@@ -165,8 +165,8 @@ včetně úplných `ruleList` u hádanek. `currentGame` je null nebo hra jako ve
 včetně `scenarioRevision` (bez vnořeného `uuAppErrorMap`). Konfigurace neobsahuje tokeny ani kódy.
 
 **Kroky:** načte konzistentní snímek místnosti, zařízení, scénáře, hádanek a aktuální hry.
-Vrátí úplnou konfiguraci a zaznamená `syncedScenarioRevision` jako odeslanou revizi.
-Tato hodnota nedokazuje, že odpověď gateway přijala. Heartbeat hlásí revizi skutečně uloženou na gateway.
+Vrátí úplnou konfiguraci. `gateway.syncedScenarioRevision` **nezapisuje**: odeslání konfigurace ještě neznamená,
+že ji gateway uložila. Skutečně uloženou revizi hlásí gateway v heartbeat a ten ji zapíše.
 Gateway konfiguraci uloží atomicky na disk a při výpadku používá poslední úspěšnou kopii.
 Stahuje ji při startu a při rozdílu revize z heartbeat. Nesmí vyhodnocovat hru s jinou revizí;
 `resetRoom` nejprve zajistí správnou konfiguraci. Teplota se pro pravidla vyhodnocuje z okamžitých vzorků,
@@ -206,7 +206,7 @@ const gatewayHeartbeatDtoInType = shape({
    vrátí `deviceNameAlreadyExists` místo přepsání zařízení. Vrátí mapování na cloudová `deviceId`.
 3. Nastaví `gateway.lastSeenAt` a `lastSeenAt` přítomných zařízení na čas přijetí serverem.
    Existující názvy, typy a `lastValue` nepřepisuje. Chybějící zařízení nemaže ani jim neobnovuje čas.
-4. Porovná skutečnou revizi gateway s revizí scénáře a vrátí `configChanged`.
+4. Uloží hlášenou revizi do `gateway.syncedScenarioRevision`, porovná ji s revizí scénáře a vrátí `configChanged`.
 
 Seznam je úplný snímek **právě dostupných** zařízení, včetně neaktivního tlačítka a LED.
 Gateway ověřuje živost nodu pravidelnou komunikací po USB, nikoliv podle poslední herní události.
