@@ -2,7 +2,7 @@
 
 Odevzdávaná dokumentace je v uuManagementKit (kurz BIOT, Tým 1). Zdrojové texty jsou v `docs/`.
 Každý dokument má „Main page“ a podstránky (dropdown u názvu stránky).
-Stav k 2. 11. 2026.
+Stav k 15. 11. 2026.
 
 ## BIOT DL Business Requests – Tým 1 (`01-business-request.md`)
 
@@ -40,8 +40,8 @@ kardinality v diagramu produktů vyjadřují typy čar; Data binding je zatím t
 | User view entry points | vstupní body (routy) | 9 | ❌ |
 | Routes | Basic Info, props, Component Diagram, render pravidla | 9 | ❌ šablona |
 | Components | Basic Info, props, Component Diagram | 9 | ❌ šablona |
-| IoT Gateway | Node-RED flow, downsampling, fronta, retence | 7 | ⚠️ uu5String připraven (z `iot-gateway.md` a `iot-protocol.md` kap. 6–8), vložit |
-| IoT Node | hardware, firmware, formát zpráv | 7 | ⚠️ uu5String připraven (z `iot-hardware.md`, `iot-node.md`, `iot-protocol.md` kap. 1–5), vložit |
+| IoT Gateway | Node-RED flow, downsampling, fronta, retence; diagramy v uuDraw (struktura flow, 3 sekvenční) | 7 | ✅ (z `iot-gateway.md` a `iot-protocol.md` kap. 6–8) |
+| IoT Node | hardware, firmware, formát zpráv; diagramy v uuDraw (zapojení, obvody, topologie, smyčka firmwaru) | 7 | ✅ (z `iot-hardware.md`, `iot-node.md`, `iot-protocol.md` kap. 1–5) |
 
 ## Co zbývá doplnit
 
@@ -50,8 +50,7 @@ kardinality v diagramu produktů vyjadřují typy čar; Data binding je zatím t
 3. Business Model → Processes: procesní diagram.
 4. Business Model → Products: atributy produktů („Product Name / Attributes“) *(týden 6)*.
 5. Application Model → Application Profiles, Persistence Layer, Command List *(týden 6)*.
-6. Application Model → IoT Gateway, IoT Node *(týden 7)*.
-7. Application Model → User view entry points, Routes, Components *(týden 9)*.
+6. Application Model → User view entry points, Routes, Components *(týden 9)*.
 
 ## Tipy k editaci uuMK (ověřeno 2. 11. 2026)
 
