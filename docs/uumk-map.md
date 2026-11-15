@@ -40,8 +40,8 @@ kardinality v diagramu produktů vyjadřují typy čar; Data binding je zatím t
 | User view entry points | vstupní body (routy) | 9 | ❌ |
 | Routes | Basic Info, props, Component Diagram, render pravidla | 9 | ❌ šablona |
 | Components | Basic Info, props, Component Diagram | 9 | ❌ šablona |
-| IoT Gateway | Node-RED flow, downsampling, fronta, retence | 7 | ❌ |
-| IoT Node | firmware, formát zpráv | 7 | ❌ |
+| IoT Gateway | Node-RED flow, downsampling, fronta, retence | 7 | ⚠️ uu5String připraven (z `iot-gateway.md` a `iot-protocol.md` kap. 6–8), vložit |
+| IoT Node | hardware, firmware, formát zpráv | 7 | ⚠️ uu5String připraven (z `iot-hardware.md`, `iot-node.md`, `iot-protocol.md` kap. 1–5), vložit |
 
 ## Co zbývá doplnit
 

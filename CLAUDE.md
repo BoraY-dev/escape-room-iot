@@ -90,7 +90,7 @@ Aktéři: **Provozovatel**, **Game master**, **Hráč** (jen fyzicky ovládá p�
 | Rozsah MVP | US01–US04, US09–US12, US14–US17; ostatní jako rozšíření | Malý tým, software dělám sám |
 | Role teploměru | (1) podmínka hádanky – okamžitá hodnota, bez downsamplingu; (2) monitoring teploty místnosti – downsampling na gateway (měření à 10 s → 1 hodnota / 5 min) | Downsampling dává smysl jen u průběžné veličiny; tlačítko a náklon jsou jednorázové události. Strategie: **medián** za 5 min (UTC okna) – odolný vůči krátkým výkyvům (teploměr v ruce hráče, rušení) |
 | Metoda řízení | Kanban přes GitHub Projects | Malý tým s nepravidelnou prací, sprinty by byly zbytečná režie |
-| Rozdělení práce | Software já, hardware (Arduino, firmware, RPi) David Král; gateway sdílená – k potvrzení. Týden 6: datový model já, commandy webu a profily Vítek, commandy gateway Lukáš (převzato od Davida, který neodpovídal) | Viz `docs/04-project-management.md` |
+| Rozdělení práce | Software já, hardware (Arduino, firmware, RPi) David Král; gateway sdílená – k potvrzení. Týden 6: datový model já, commandy webu a profily Vítek, commandy gateway Lukáš (převzato od Davida, který neodpovídal). Týden 7: Node-RED flow Lukáš; zapojení HW a firmware já (David a Vítek bez odezvy) | Viz `docs/04-project-management.md` |
 | Živý přehled hry | Frontend se dotazuje (polling) každé 2 s na `game/getCurrent` (stav hry, upozornění i nové události) | Jednoduché na implementaci i nasazení; WebSockety lze doplnit později beze změny commandů |
 | Povely z webu pro gateway | Fronta `gatewayCommand` v cloudu, gateway si ji vyzvedává | Gateway je za NAT, cloud ji nemůže volat; při výpadku povely počkají |
 | Oprávnění Operators | Provozovatel smí i řídit hru (vše co game master) | V malé provozovně hru často řídí majitel |
@@ -111,7 +111,7 @@ Aktéři: **Provozovatel**, **Game master**, **Hráč** (jen fyzicky ovládá p�
 | 3 | Git repozitář založen, odkázán na portále, úvodní commit | 2 | ✅ https://github.com/BoraY-dev/escape-room-iot |
 | 4 | Popsáni klíčoví aktéři, produkty a business use-cases | 2 | ✅ v uuBookKitu |
 | 6 | Návrh backendu (endpointy, datový model) | 2 | ✅ v uuMK (PR #1) |
-| 7 | Navrženo technické řešení IoT části | 2 | ⏳ **aktuální** (větev `iot-design`) |
+| 7 | Navrženo technické řešení IoT části | 2 | ✅ (PR #2) |
 | 7 | Základní implementace backendu | 2 | ⬜ |
 | 8 | Základní implementace IoT části (node, gateway) | 2 | ⬜ |
 | 9 | Návrh frontendu (routy, komponenty) | **4** | ⬜ |
