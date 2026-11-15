@@ -17,4 +17,5 @@
 
 - [Hardware IoT Node a gateway](03-application-model/iot-hardware.md) – součástky, piny, zapojení (podle datasheetů, k ověření)
 - [Firmware IoT Node](03-application-model/iot-node.md) – struktura programu, senzory, povely, chyby a zotavení
+- [IoT Gateway – Node-RED flow](03-application-model/iot-gateway.md) – bloky flow, SQLite fronta, odesílání, karanténa, povely, dashboard, autostart
 - [Komunikace IoT Node ↔ Gateway](03-application-model/iot-protocol.md) – formát zpráv, downsampling, retence, sekvenční diagramy

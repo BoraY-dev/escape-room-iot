@@ -24,7 +24,7 @@ a vykonává povely. Pravidla hádanek, časy událostí a komunikaci s cloudem 
 | Kódování | ASCII / UTF-8 |
 | Rámec | **jedna zpráva = jeden řádek** ukončený `\n` (gateway toleruje i `\r\n`) |
 | Formát zprávy | JSON objekt na jednom řádku („JSON Lines“) |
-| Max. délka | node → gateway 256 B, gateway → node **64 B** (velikost vstupního bufferu Arduina) |
+| Max. délka | node → gateway 256 B, gateway → node **128 B** (vejde se povel s nejdelším `hwId`, 30 znaků) |
 
 **Proč JSON na řádek:** Node-RED zprávu rozparsuje jedním uzlem (`json`), formát je čitelný při ladění
 v sériovém monitoru a nové typy zpráv nebo atributy se dají přidat, aniž by se rozbily stávající.

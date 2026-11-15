@@ -44,7 +44,7 @@ Akcelerometr se čte **přímo přes registry** MPU-6050, bez další knihovny: 
 | `TEMP_MIN_C`, `TEMP_MAX_C` | `-20`, `80` | platný rozsah, mimo něj chyba senzoru |
 | `HB_PERIOD_MS` | `5000` | heartbeat nodu |
 | `SENSOR_RETRY_MS` | `5000` | opakování inicializace a hlášení chyby senzoru |
-| `RX_BUFFER` | `64` | max. délka povelu od gateway |
+| `RX_BUFFER` | `128` | max. délka povelu od gateway |
 
 `hwId` se skládají z `NODE_ID`: `node1.btn1`, `node1.acc1`, `node1.temp1`, `node1.led1`.
 
@@ -169,7 +169,8 @@ Každých 10 s:
 
 ## 6. Příjem povelů
 
-Znaky ze sériové linky se ukládají do bufferu o velikosti 64 B, dokud nepřijde `\n`.
+Znaky ze sériové linky se ukládají do bufferu o velikosti 128 B, dokud nepřijde `\n`.
+Hardwarový vstupní buffer Arduina má jen 64 B, ale smyčka ho čte průběžně, takže nepřeteče.
 Když řádek buffer přeteče, node zahazuje znaky do nejbližšího `\n` a pošle `err` s `badMessage`.
 Hotový řádek rozparsuje ArduinoJson a podle `t` provede povel:
 
@@ -210,7 +211,7 @@ Gateway pozná změnu dostupnosti zařízení z nového `hello` a v `gateway/hea
 
 ## 9. Paměť
 
-Arduino Mega má **8 KB RAM**. Firmware potřebuje řádově stovky bajtů: buffer povelů 64 B, dokument ArduinoJson
+Arduino Mega má **8 KB RAM**. Firmware potřebuje řádově stovky bajtů: buffer povelů 128 B, dokument ArduinoJson
 pro jednu zprávu asi 256 B, stav senzorů desítky bajtů. Pevné texty jsou v paměti programu (makro `F()`),
 aby nezabíraly RAM.
 

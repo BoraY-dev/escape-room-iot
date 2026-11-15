@@ -1,5 +1,8 @@
 # IoT Gateway – návrh Node-RED flow
 
+> Zdroj pro stránku **BIOT DL Application Model – Tým 1 → IoT Gateway**.
+> Formát zpráv s nodem je v `iot-protocol.md`, commandy pro cloud v `command-list-gateway.md`.
+
 
 ## Přehled bloků flow
 
@@ -23,7 +26,7 @@
 
 Gateway běží na Raspberry Pi 5 jako Node-RED služba. Přes USB komunikuje s Arduino nody,
 lokálně vyhodnocuje pravidla hádanek a přes HTTPS komunikuje s cloudem. Internet není nutný
-pro pokračování již připravené hry,ale živý webový přehled a nové cloudové povely během výpadku nefungují.
+pro pokračování již připravené hry, ale živý webový přehled a nové cloudové povely během výpadku nefungují.
 
 Návrh používá sériové uzly, `json`, `switch`, `function`, `inject`, `delay`, `http request`,
 `catch`, `status`, SQLite adaptér a dashboard. Konkrétní verze balíků se uzamknou při implementaci.
@@ -92,7 +95,7 @@ nebo chráněný lokální přístup; samotné `adminAuth` automaticky nechrán�
 ## 4. USB komunikace a dostupnost
 
 Platí společný protokol: **115 200 Bd, 8N1, JSON Lines**, jeden řádek ukončený LF,
-tolerance CRLF. Příjem má limit 256 B a výstup 64 B dle protokolu.
+tolerance CRLF. Příjem má limit 256 B a výstup 128 B dle protokolu.
 Příliš dlouhý řádek se zahazuje až po další LF, neplatný JSON a neznámý typ se počítají v diagnostice.
 
 | Zpráva | Zpracování gateway |
@@ -111,8 +114,8 @@ Samotné pořadí ttyACM portů neurčuje identitu nodu.
 
 Node vysílá hb každých 5 s. Po 15 s bez validní zprávy je node offline a jeho zařízení se
 vynechají z cloudového heartbeat. Vadný senzor se neozdraví jen proto, že node poslal hb;
-obnoví se validním měřením, událostí nebo ověřením po opravě. U tichého tlačítka či LED může
-obsluha vyvolat nové ohlášení po opravě. Prázdný seznam zařízení je platný.
+obnoví se validním měřením, událostí nebo ověřením po opravě. Node po obnově senzoru pošle nové `hello`;
+zařízení, které v něm je, se tím obnoví. U tichého tlačítka či LED může obsluha vyvolat nové ohlášení po opravě. Prázdný seznam zařízení je platný.
 
 `seq` se kontroluje modulo 65536; mezera vyvolá diagnostiku, ne žádost o opakování.
 Změna uptime směrem dolů nebo znovuotevření portu zahájí novou relaci; `hello` jako odpověď
