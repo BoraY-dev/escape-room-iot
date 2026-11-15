@@ -15,4 +15,5 @@
 
 ## Podstránky (technické řešení IoT)
 
+- [Hardware IoT Node a gateway](03-application-model/iot-hardware.md) – součástky, piny, zapojení (podle datasheetů, k ověření)
 - [Komunikace IoT Node ↔ Gateway](03-application-model/iot-protocol.md) – formát zpráv, downsampling, retence, sekvenční diagramy

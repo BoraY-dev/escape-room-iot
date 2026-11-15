@@ -98,6 +98,7 @@ Aktéři: **Provozovatel**, **Game master**, **Hráč** (jen fyzicky ovládá p�
 | Přístup k databázi | Mongoose | Schémata s validací přímo odpovídají Persistence Layer |
 | Vazba místnost–gateway | Jen `gateway.roomId` (unikátní), bez `room.gatewayId` | Jeden zdroj pravdy; při výměně gateway zůstanou zařízení i pravidla u místnosti |
 | Opakované odeslání z gateway | Unikátní `gatewayEventId` u událostí, `deviceId` + `windowStart` u měření | Po výpadku se data posílají znovu a nesmí vzniknout duplicity |
+| Zapojení IoT Node | GY-521 na I2C (20/21, `0x68`), termistor NTC 10 kΩ v děliči na A0, tlačítko D2 (`INPUT_PULLUP`), LED D8 přes 220 Ω; Arduino napájené z USB RPi 5 | **Provizorně podle datasheetů** (David neaktivní) – ověřit na skutečném HW, viz `docs/03-application-model/iot-hardware.md` kap. 7 |
 | Formát zpráv node ↔ gateway | JSON na řádek, 115 200 Bd; `hwId` = `<NODE_ID>.<zařízení>`; povely nastavují absolutní stav s `cid` + `ack` | Node-RED parsuje jedním uzlem, čitelné, rozšiřitelné; opakovaný povel je neškodný. Detail v `docs/03-application-model/iot-protocol.md` |
 | Retence v cloudu | `event` a `measurement` 90 dní (TTL), doručené `gatewayCommand` 7 dní, výsledky her trvale | Atlas free tier má 512 MB; výsledky zůstávají v `game` |
 
