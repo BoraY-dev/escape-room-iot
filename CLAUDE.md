@@ -109,6 +109,7 @@ Aktéři: **Provozovatel**, **Game master**, **Hráč** (jen fyzicky ovládá p�
 | Testy a lokální běh | `node --test` + supertest + mongodb-memory-server (replica set kvůli transakcím); `npm run dev:memory` bez Atlasu | Testy nepotřebují cloud; transakce `sendEvents` fungují stejně jako v Atlasu |
 | Databáze gateway | Uzel `node-red-node-sqlite` (zadání: „rozšíření Node-RED pro databázi“); všechny zápisy přes jediné „DB dotaz“ / „DB transakce“ (link call), vícetabulkové změny jako jedna dávka `BEGIN…COMMIT`, při chybě ROLLBACK | Varianta B zvolená 19. 11.; odpovídá zadání, zápisy se neprokládají |
 | Zdroj flow | `gateway/flows.json` se generuje (`npm run build`) z `src/functions/*.js` a knihovny `src/lib/gw.js`; knihovna se při startu vloží do globálního kontextu | Kód čitelný a revidovatelný v gitu, výpočty testované (`npm test`) |
+| Hosting | Backend na **Render** (free, Frankfurt, Blueprint `render.yaml`, nasazuje se z `main`), databáze **MongoDB Atlas M0** (Frankfurt); `JWT_SECRET` generuje Render, `MONGODB_URI` jen v Renderu a lokálním `.env` | Zdarma, HTTPS automaticky, oba ve stejném regionu; free služba usíná po 15 min, heartbeat gateway ji drží vzhůru. Adresa: https://escape-room-iot-api.onrender.com |
 | Token gateway | V lokální SQLite (`kv`), soubor jen pro účet služby (`UMask=0077`); vlastní credentials uzel je rozšíření | Základní implementace; token se nedostane do dashboardu, logů ani fronty |
 
 ## Milníky
@@ -125,7 +126,7 @@ Aktéři: **Provozovatel**, **Game master**, **Hráč** (jen fyzicky ovládá p�
 | 8 | Základní implementace IoT části (node, gateway) | 2 | 🔶 firmware i Node-RED flow hotové a otestované bez HW; čeká test na RPi s Arduinem |
 | 9 | Návrh frontendu (routy, komponenty) | **4** | ⬜ |
 | 10 | Základní implementace frontendu | 2 | ⬜ |
-| 12 | Nasazení aplikace v cloudu | 2 | ⬜ |
+| 12 | Nasazení aplikace v cloudu | 2 | 🔶 backend nasazený (Render + Atlas, 20. 11.), frontend zatím ne |
 
 Po dokončení milníku aktualizuj tuto tabulku i tabulku v `README.md`.
 
