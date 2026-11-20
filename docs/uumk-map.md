@@ -41,7 +41,7 @@ kardinality v diagramu produktů vyjadřují typy čar; Data binding je zatím t
 | Routes | Basic Info, props, Component Diagram, render pravidla | 9 | ❌ šablona |
 | Components | Basic Info, props, Component Diagram | 9 | ❌ šablona |
 | IoT Gateway | Node-RED flow, downsampling, fronta, retence; diagramy v uuDraw (struktura flow, 3 sekvenční) | 7 | ✅ (z `iot-gateway.md` a `iot-protocol.md` kap. 6–8) |
-| IoT Node | hardware podle skutečného prototypu, firmware, formát zpráv; diagramy v uuDraw (zapojení, DHT11, tlačítka, LED, topologie, smyčka firmwaru) | 7 | ✅ (z `iot-hardware.md`, `iot-node.md`, `iot-protocol.md` kap. 1–5) |
+| IoT Node | hardware podle skutečného prototypu (19. 11.), firmware, formát zpráv; diagramy v uuDraw (zapojení, DHT11, tlačítka, LED, topologie, smyčka firmwaru) | 7 | ✅ (z `iot-hardware.md`, `iot-node.md`, `iot-protocol.md` kap. 1–5) |
 
 ## Co zbývá doplnit
 

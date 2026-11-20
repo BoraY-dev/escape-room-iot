@@ -8,15 +8,18 @@
 Firmware běží na **Arduino Mega 2560** a je napsaný v Arduino C++ (Arduino IDE nebo PlatformIO).
 Dělá jen čtyři věci a o hře nic neví:
 
-1. čte senzory (tlačítko, akcelerometr, termistor),
+1. čte senzory (3 tlačítka, akcelerometr, teploměr DHT11),
 2. hlásí události, vzorky teploty a svůj stav gateway (`iot-protocol.md`),
-3. vykonává povely z gateway (LED, reset),
+3. vykonává povely z gateway (2 LED, reset),
 4. hlídá chyby senzorů a sám se zotaví ze zaseknutí (watchdog).
+
+Klávesnici, enkodér a LCD (zapojené pro 2. fázi, `iot-hardware.md` kap. 6) firmware MVP nepoužívá; jejich piny nechává jako vstupy.
 
 | Knihovna | Účel |
 |---|---|
 | `Wire` (součást Arduina) | sběrnice I2C pro GY-521 |
 | **ArduinoJson** 7.x | sestavení a čtení zpráv JSON |
+| **DHT sensor library** (Adafruit) 1.4.x + Adafruit Unified Sensor | čtení DHT11 |
 | `avr/wdt.h` (součást toolchainu) | watchdog |
 
 Akcelerometr se čte **přímo přes registry** MPU-6050, bez další knihovny: potřebujeme jen zrychlení ve třech osách.
@@ -27,9 +30,9 @@ Akcelerometr se čte **přímo přes registry** MPU-6050, bez další knihovny: 
 |---|---|---|
 | `NODE_ID` | `"node1"` | identifikace nodu, prefix všech `hwId` |
 | `FW_VERSION` | `"1.0.0"` | verze firmwaru v `hello` |
-| `PIN_BUTTON` | `2` | tlačítko |
-| `PIN_LED` | `8` | LED |
-| `PIN_THERMISTOR` | `A0` | termistor |
+| `PIN_BUTTONS` | `{2, 3, 4}` | tlačítka 1–3 |
+| `PIN_LEDS` | `{22, 23}` | LED zelená, červená |
+| `PIN_DHT` | `5` | DHT11 |
 | `MPU_ADDR` | `0x68` | I2C adresa GY-521 |
 | `SERIAL_BAUD` | `115200` | rychlost linky |
 | `DEBOUNCE_MS` | `30` | ošetření zákmitů tlačítka |
@@ -39,18 +42,17 @@ Akcelerometr se čte **přímo přes registry** MPU-6050, bez další knihovny: 
 | `MOVE_THRESHOLD_G` | `0.3` | odchylka od 1 g, která znamená pohyb |
 | `MOVE_COOLDOWN_MS` | `1000` | pauza po hlášení pohybu |
 | `TEMP_PERIOD_MS` | `10000` | vzorek teploty |
-| `TEMP_READS` | `10` | počet čtení převodníku na jeden vzorek |
-| `NTC_R0`, `NTC_B`, `R_FIXED` | `10000`, `3950`, `10000` | parametry termistoru a děliče ⚠️ ověřit (`iot-hardware.md` kap. 7) |
-| `TEMP_MIN_C`, `TEMP_MAX_C` | `-20`, `80` | platný rozsah, mimo něj chyba senzoru |
+| `TEMP_FAIL_LIMIT` | `3` | počet neúspěšných čtení DHT11 po sobě, po kterém se teploměr vyřadí z `hello` |
+| `TEMP_MIN_C`, `TEMP_MAX_C` | `0`, `50` | rozsah DHT11, mimo něj chyba senzoru |
 | `HB_PERIOD_MS` | `5000` | heartbeat nodu |
 | `SENSOR_RETRY_MS` | `5000` | opakování inicializace a hlášení chyby senzoru |
 | `RX_BUFFER` | `128` | max. délka povelu od gateway |
 
-`hwId` se skládají z `NODE_ID`: `node1.btn1`, `node1.acc1`, `node1.temp1`, `node1.led1`.
+`hwId` se skládají z `NODE_ID`: `node1.btn1`–`node1.btn3`, `node1.acc1`, `node1.temp1`, `node1.led1` (zelená), `node1.led2` (červená).
 
 ## 3. Struktura programu
 
-Program **nikde nečeká** (`delay()` se nepoužívá). Hlavní smyčka `loop()` běží stále dokola a každá úloha
+Hlavní smyčka **nikde nečeká** (`delay()` se v ní nepoužívá). Smyčka `loop()` běží stále dokola a každá úloha
 si podle `millis()` hlídá, jestli už nastal její čas. Tlačítko tak zareaguje do pár milisekund,
 i když se zrovna měří teplota.
 
@@ -61,11 +63,11 @@ flowchart TD
   H --> L{"loop()"}
   L --> W["nakrm watchdog"]
   W --> RX["přečti příchozí znaky; celý řádek → zpracuj povel"]
-  RX --> B["tlačítko: debounce → ev press"]
+  RX --> B["tlačítka 1–3: debounce → ev press"]
   B --> A["každých 50 ms: akcelerometr → ev tilt / ev move"]
-  A --> T["každých 10 s: teplota → m"]
+  A --> T["každých 10 s: teplota DHT11 → m"]
   T --> HB["každých 5 s: hb"]
-  HB --> LED["blikání LED (1 Hz), je-li zapnuté"]
+  HB --> LED["blikání LED (1 Hz), jsou-li v režimu blink"]
   LED --> E["chyby senzorů: opakuj init, hlas err"]
   E --> L
 ```
@@ -73,7 +75,7 @@ flowchart TD
 | Úloha | Perioda | Výstup |
 |---|---|---|
 | příjem povelů | každý průchod smyčkou | `ack`, `err` |
-| tlačítko | každý průchod smyčkou | `ev press` |
+| tlačítka | každý průchod smyčkou | `ev press` |
 | akcelerometr | 50 ms | `ev tilt`, `ev move` |
 | teplota | 10 s | `m` |
 | heartbeat | 5 s | `hb` |
@@ -88,7 +90,7 @@ void loop() {
   unsigned long now = millis();
 
   readSerialCommands();             // řádek → handleCommand()
-  updateButton(now);
+  updateButtons(now);
   if (now - lastAccelMs >= ACCEL_PERIOD_MS) { lastAccelMs = now; updateAccelerometer(now); }
   if (now - lastTempMs  >= TEMP_PERIOD_MS)  { lastTempMs  = now; sampleTemperature(); }
   if (now - lastHbMs    >= HB_PERIOD_MS)    { lastHbMs    = now; sendHeartbeat(now); }
@@ -101,21 +103,27 @@ Odčítání `now - last…` funguje správně i po přetečení `millis()` (asi
 
 ## 4. Start
 
-1. `Serial.begin(115200)`, `Wire.begin()`, `pinMode(PIN_BUTTON, INPUT_PULLUP)`, `pinMode(PIN_LED, OUTPUT)`, LED zhasnutá.
+1. `Serial.begin(115200)`, `Wire.begin()`, `dht.begin()`, tlačítka `INPUT_PULLUP`, LED `OUTPUT` a zhasnuté.
 2. Inicializace GY-521: zápis `0x00` do registru `PWR_MGMT_1` (`0x6B`) čip probudí,
-   zápis `0x00` do `ACCEL_CONFIG` (`0x1C`) nastaví rozsah ±2 g. Kontrola: registr `WHO_AM_I` (`0x75`) vrací `0x68`.
+   zápis `0x00` do `ACCEL_CONFIG` (`0x1C`) nastaví rozsah ±2 g. Kontrola: registr `WHO_AM_I` (`0x75`) musí odpovědět.
+   Originální MPU-6050 vrací `0x68`, klony na levných modulech GY-521 (MPU-6500 apod.) jinou hodnotu se stejnými
+   registry zrychlení; za chybu se proto bere jen žádná odpověď (`0x00`, `0xFF`). Sběrnice I2C má časový limit 3 ms
+   (`Wire.setWireTimeout`), aby odpojený modul nezasekl program.
 3. Úvodní měření náklonu, aby první `tilt` odpovídal skutečné poloze.
 4. Zapnutí watchdogu na 2 s (`wdt_enable(WDTO_2S)`).
-5. Odeslání `hello` se seznamem **funkčních** zařízení. Když GY-521 neodpovídá, `node1.acc1` v seznamu chybí
+5. Po 1 s (DHT11 se po zapnutí napájení ustaluje; jediné čekání ve firmwaru, ještě před zapnutím watchdogu)
+   úvodní čtení DHT11; když se nepovede, `node1.temp1` se do `hello` nezařadí.
+6. Odeslání `hello` se seznamem **funkčních** zařízení. Když GY-521 neodpovídá, `node1.acc1` v seznamu chybí
    a node pošle `err` se `sensorNotResponding`.
 
 Gateway při otevření portu Arduino restartuje (signál DTR), takže `hello` přijde vždy po připojení.
 
 ## 5. Senzory
 
-### Tlačítko (`node1.btn1`)
+### Tlačítka (`node1.btn1`–`node1.btn3`)
 
-Stisk stáhne pin D2 na LOW. Firmware si pamatuje poslední přečtenou hodnotu a čas její změny.
+Stisk stáhne pin (D2, D3, D4) na LOW. Každé tlačítko se ošetřuje samostatně, takže lze zmáčknout i dvě najednou.
+Firmware si u každého pamatuje poslední přečtenou hodnotu a čas její změny.
 Novou hodnotu uzná až tehdy, když je stabilní **30 ms**: kontakty tlačítka při stisku několik milisekund „zakmitají“
 a bez ošetření by jeden stisk vypadal jako několik. Při přechodu do stabilního LOW pošle:
 
@@ -123,7 +131,7 @@ a bez ošetření by jeden stisk vypadal jako několik. Při přechodu do stabil
 {"t":"ev","id":"node1.btn1","e":"press","seq":42}
 ```
 
-Uvolnění tlačítka se nehlásí.
+Uvolnění tlačítka se nehlásí. Pořadí stisků (kombinace) vyhodnocuje gateway.
 
 ### Akcelerometr (`node1.acc1`)
 
@@ -156,16 +164,20 @@ Vyhlazení to tlumí; po uklidnění předmětu se hodnota ustálí. Gyroskop MP
 
 Každých 10 s:
 
-1. Přečte A0 desetkrát po sobě a hodnoty zprůměruje (potlačení šumu převodníku). Tento průměr se týká jen
-   jednoho vzorku; downsampling teploty (medián za 5 min) dělá gateway.
-2. Spočítá odpor termistoru a teplotu (rovnice v `iot-hardware.md`).
-3. Zkontroluje rozsah −20 až 80 °C. Rozpojený termistor dá hodnotu převodníku u 1023, zkratovaný u 0;
-   obojí skončí mimo rozsah a node pošle `err` se `sensorOutOfRange` místo vzorku.
-4. Pošle vzorek zaokrouhlený na 0,1 °C:
+1. Přečte teplotu z DHT11 (`dht.readTemperature()`). Downsampling teploty (medián za 5 min) dělá gateway.
+2. Když čtení selže (knihovna vrátí `NaN`, typicky odpojený datový vodič), pošle `err` se `sensorNotResponding`.
+   Po **3 neúspěšných čteních po sobě** teploměr vyřadí z `hello` a pošle nové `hello`; po prvním úspěšném čtení ho vrátí.
+3. Zkontroluje rozsah DHT11 0–50 °C; mimo něj pošle `err` se `sensorOutOfRange` místo vzorku.
+4. Pošle vzorek v celých °C (DHT11 jemnější rozlišení nemá):
 
 ```json
-{"t":"m","id":"node1.temp1","v":23.4,"seq":45}
+{"t":"m","id":"node1.temp1","v":23,"seq":45}
 ```
+
+**Blokující čtení.** Jedno čtení DHT11 trvá asi 25 ms a knihovna při něm na několik milisekund vypne přerušení.
+Tlačítko se tak může ohlásit o 25 ms později, což hráč nepozná. Znaky povelu, které přijdou ze sériové linky právě
+v okamžiku vypnutých přerušení, se mohou ztratit. Povel se pak nedá přečíst nebo nedojde celý, node nepošle `ack`
+a gateway povel po 500 ms zopakuje (`iot-protocol.md` kap. 4). Při čtení jednou za 10 s jde o výjimečnou situaci.
 
 ## 6. Příjem povelů
 
@@ -176,8 +188,8 @@ Hotový řádek rozparsuje ArduinoJson a podle `t` provede povel:
 
 | `t` | Akce | Odpověď |
 |---|---|---|
-| `led` | ověří `id` (`node1.led1`) a nastaví stav `on`, `off` nebo `blink` | `ack ok:true`; neznámé `id` → `ack ok:false`, `err:"unknownDevice"` |
-| `reset` | zhasne LED a vynuluje vnitřní stav: referenci náklonu (další `tilt` se pošle hned) a stav tlačítka | `ack ok:true` |
+| `led` | ověří `id` (`node1.led1` nebo `node1.led2`) a nastaví stav `on`, `off` nebo `blink` | `ack ok:true`; neznámé `id` → `ack ok:false`, `err:"unknownDevice"` |
+| `reset` | zhasne obě LED a vynuluje vnitřní stav: referenci náklonu (další `tilt` se pošle hned) a stav tlačítek | `ack ok:true` |
 | `who` | pošle `hello` | `ack ok:true` a `hello` |
 | jiné | nic | `ack ok:false`, `err:"unknownCommand"` |
 
@@ -200,6 +212,7 @@ Heartbeat každých 5 s:
 | Situace | Chování nodu |
 |---|---|
 | GY-521 neodpovídá při startu nebo za běhu | `node1.acc1` vyřadí z `hello`, každých 5 s zkusí inicializaci znovu a pošle `err sensorNotResponding`; po obnovení pošle nové `hello` |
+| DHT11 nevrací hodnotu | `err sensorNotResponding` při každém neúspěšném čtení; po 3 neúspěších po sobě vyřadí `node1.temp1` z `hello`, po obnovení pošle nové `hello` |
 | teplota mimo rozsah | místo vzorku `err sensorOutOfRange` (každých 10 s, dokud trvá) |
 | neplatný povel | `err badMessage` |
 | zaseknutí programu | watchdog po 2 s Arduino restartuje; po startu node pošle `hello` a gateway mu znovu nastaví LED podle stavu hry |
@@ -211,15 +224,16 @@ Gateway pozná změnu dostupnosti zařízení z nového `hello` a v `gateway/hea
 
 ## 9. Paměť
 
-Arduino Mega má **8 KB RAM**. Firmware potřebuje řádově stovky bajtů: buffer povelů 128 B, dokument ArduinoJson
-pro jednu zprávu asi 256 B, stav senzorů desítky bajtů. Pevné texty jsou v paměti programu (makro `F()`),
-aby nezabíraly RAM.
+Arduino Mega má **8 KB RAM** a 248 KB paměti programu. Přeložený firmware (`iot-node/escape-node`) zabírá
+asi 24 KB programu a **940 B** globálních proměnných (buffer povelů 128 B, stav senzorů, knihovny).
+Dokument ArduinoJson pro jednu zprávu (nejdelší `hello` asi 310 B) se vytváří dočasně, takže zbývá přes 7 KB rezervy.
 
 ## 10. Test bez gateway
 
 Firmware jde vyzkoušet přímo v sériovém monitoru Arduino IDE (115 200 Bd, konec řádku „Newline“):
 
 1. Po otevření monitoru přijde `hello` a každých 5 s `hb`.
-2. Stisk tlačítka → `ev press`; naklonění modulu → `ev tilt`; zatřesení → `ev move`; každých 10 s → `m`.
-3. Odeslání `{"t":"led","cid":"1","id":"node1.led1","s":"on"}` rozsvítí LED a vrátí `ack`.
-4. Odeslání `{"t":"who","cid":"2"}` vrátí `ack` a `hello`.
+2. Stisk tlačítek 1–3 → `ev press` s `node1.btn1`–`btn3`; naklonění modulu → `ev tilt`; zatřesení → `ev move`; každých 10 s → `m`.
+3. Odeslání `{"t":"led","cid":"1","id":"node1.led1","s":"on"}` rozsvítí zelenou LED a vrátí `ack`;
+   `{"t":"led","cid":"2","id":"node1.led2","s":"blink"}` rozbliká červenou.
+4. Odeslání `{"t":"who","cid":"3"}` vrátí `ack` a `hello`.

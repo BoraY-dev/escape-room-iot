@@ -16,7 +16,7 @@ a jestli všechna zařízení fungují.
 
 **Řešení.** Platforma má tři vrstvy:
 
-1. **IoT Node** – Arduino Mega 2560 se senzory (tlačítko, akcelerometr, termistor) a LED, zabudovaný
+1. **IoT Node** – Arduino Mega 2560 se senzory (tlačítka, akcelerometr, teploměr) a LED, zabudovaný
    v herních předmětech. Sám o sobě o hře nic „neví“, jen hlásí, co se s předměty děje, a vykonává povely.
 2. **Gateway** – Raspberry Pi 5 s Node-RED v místnosti, k němuž je node připojen přes USB.
    Stahuje si z cloudu pravidla hádanek a vyhodnocuje je lokálně, takže hráči dostanou okamžitou

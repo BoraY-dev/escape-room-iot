@@ -12,13 +12,13 @@ z pravidel ve webové aplikaci a game master má pod kontrolou celý průběh hr
 ```
 [IoT Node]  <--USB serial-->  [Gateway: Node-RED]  --HTTPS-->  [Cloud: Express.js API]  <--  [Frontend: React]
  (Arduino Mega 2560)           (Raspberry Pi 5)                  (MongoDB Atlas)              (provozovatel, game master)
- tlačítko                      - vyhodnocení pravidel
+ 3 tlačítka                    - vyhodnocení pravidel
  akcelerometr GY-521           - downsampling teploty
- termistor                     - perzistentní fronta dat
- LED (výstup)                  - povely pro node
+ teploměr DHT11                - perzistentní fronta dat
+ 2 LED (výstup)                - povely pro node
 ```
 
-- **IoT Node** – Arduino Mega 2560 (tlačítko, akcelerometr GY-521, termistor, LED). Posílá události a měření
+- **IoT Node** – Arduino Mega 2560 (3 tlačítka, akcelerometr GY-521, teploměr DHT11, 2 LED; pro 2. fázi klávesnice, enkodér a LCD). Posílá události a měření
   po sériové lince přes USB a přijímá povely z gateway (např. rozsvícení LED).
 - **Gateway** – Node-RED na Raspberry Pi 5. Vyhodnocuje pravidla hádanek lokálně (okamžitá odezva, funguje i bez internetu),
   provádí downsampling teploty, ukládá data a odesílá je do cloudu. Startuje automaticky po zapnutí zařízení.
