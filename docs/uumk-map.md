@@ -2,7 +2,7 @@
 
 Odevzdávaná dokumentace je v uuManagementKit (kurz BIOT, Tým 1). Zdrojové texty jsou v `docs/`.
 Každý dokument má „Main page“ a podstránky (dropdown u názvu stránky).
-Stav k 15. 11. 2026.
+Stav k 19. 11. 2026.
 
 ## BIOT DL Business Requests – Tým 1 (`01-business-request.md`)
 
@@ -34,14 +34,14 @@ kardinality v diagramu produktů vyjadřují typy čar; Data binding je zatím t
 | Stránka | Obsah | Milník | Stav |
 |---|---|---|---|
 | Main page | Application Description (node, gateway, cloud, profily, toky dat, zabezpečení), Application Topology | – | ✅ |
-| Application Profiles | Role Profiles (Operators, GameMasters, Gateways), Role Group Profiles | 6 | ✅ |
-| Persistence Layer | Schema Diagram, Schema, Limit List, DAO Method List | 6 | ✅ |
-| Command List | uuCommand: dtoIn validace, dtoOut, chyby (`unsupportedKeys`, `invalidDtoIn`) | 6 | ✅ |
+| Application Profiles | Role Profiles (Operators, GameMasters, Gateways), Role Group Profiles, matice oprávnění vč. `user/login` | 6 | ✅ (aktualizováno 19. 11.) |
+| Persistence Layer | Schema Diagram, Schema, Limit List, DAO Method List | 6 | ✅ (19. 11.: `lastValue.occurredAt`) |
+| Command List | uuCommand: dtoIn validace, dtoOut, chyby (`unsupportedKeys`, `invalidDtoIn`); 19. 11. přidán `user/login` | 6 | ✅ |
 | User view entry points | vstupní body (routy) | 9 | ❌ |
 | Routes | Basic Info, props, Component Diagram, render pravidla | 9 | ❌ šablona |
 | Components | Basic Info, props, Component Diagram | 9 | ❌ šablona |
 | IoT Gateway | Node-RED flow, downsampling, fronta, retence; diagramy v uuDraw (struktura flow, 3 sekvenční) | 7 | ✅ (z `iot-gateway.md` a `iot-protocol.md` kap. 6–8) |
-| IoT Node | hardware, firmware, formát zpráv; diagramy v uuDraw (zapojení, obvody, topologie, smyčka firmwaru) | 7 | ✅ (z `iot-hardware.md`, `iot-node.md`, `iot-protocol.md` kap. 1–5) |
+| IoT Node | hardware podle skutečného prototypu, firmware, formát zpráv; diagramy v uuDraw (zapojení, DHT11, tlačítka, LED, topologie, smyčka firmwaru) | 7 | ✅ (z `iot-hardware.md`, `iot-node.md`, `iot-protocol.md` kap. 1–5) |
 
 ## Co zbývá doplnit
 

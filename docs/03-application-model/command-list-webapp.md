@@ -10,6 +10,7 @@ v [kapitole 9](#9-rozšíření-mimo-mvp).
 
 | Oblast | Commandy | Use case |
 |---|---|---|
+| Přihlášení | `user/login` ([kapitola 10](#10-přihlášení-uživatele)) | všechny (předpoklad volání ostatních commandů) |
 | Místnost | `room/create`, `room/get`, `room/list`, `room/update`, `room/delete` | BUC02 |
 | Zařízení | `device/list`, `device/update` | BUC02 |
 | Scénář | `scenario/get`, `scenario/update` | BUC03 |
@@ -17,7 +18,7 @@ v [kapitole 9](#9-rozšíření-mimo-mvp).
 | Řízení hry | `game/reset`, `game/start`, `game/pause`, `game/resume`, `game/stop`, `game/solvePuzzle`, `game/unsolvePuzzle` | BUC05, BUC06 |
 | Živý přehled | `game/getCurrent` | BUC06 |
 
-Celkem **20 commandů**.
+Celkem **21 commandů**.
 
 ---
 
@@ -690,3 +691,43 @@ Tyto commandy se navrhnou, až na ně dojde:
 
 Commandy pro správu gateway z webu (`gateway/create` s registračním kódem, `gateway/list`) patří k registraci
 gateway (BUC01) a jsou popsané v Command Listu pro gateway.
+
+---
+
+## 10. Přihlášení uživatele
+
+> Řeší otevřený bod 1 z Application Profiles. První provozovnu a provozovatele zakládá skript
+> `server/scripts/create-user.js` (správa game masterů z webu je rozšíření US07).
+
+### user/login
+
+**Metoda:** `POST /user/login` · **Profily:** bez tokenu (ověřuje se e-mailem a heslem) · **Use case:** všechny
+
+```js
+const userLoginDtoInType = shape({
+  email:    string(3, 254).isRequired(),
+  password: string(1, 200).isRequired()
+});
+```
+
+**dtoOut**
+
+```json
+{
+  "token": "<JWT>",
+  "user": { "id": "...", "venueId": "...", "email": "jan@example.com", "name": "Jan Novák", "role": "operator" },
+  "uuAppErrorMap": {}
+}
+```
+
+**Kroky**
+
+1. Zvaliduje dtoIn a najde uživatele podle e-mailu (malými písmeny).
+2. Porovná heslo s uloženým bcrypt hashem. Neexistující e-mail i špatné heslo vrací **stejnou chybu**
+   a odpověď trvá stejně dlouho, aby nešlo zjistit, které e-maily v systému jsou.
+3. Vydá JWT s `userId` (`sub`), `venueId` a `role`, platnost 12 h.
+
+| Chyba | Typ | HTTP | Popis |
+|---|---|---|---|
+| `invalidCredentials` | chyba | 401 | Neplatný e-mail nebo heslo. |
+| `tooManyRequests` | chyba | 429 | Příliš mnoho pokusů (20 za minutu z jedné IP adresy). |

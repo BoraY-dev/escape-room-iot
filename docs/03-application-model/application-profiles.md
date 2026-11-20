@@ -74,13 +74,15 @@ jednorázovým registračním kódem (BUC01).
 | `game/solvePuzzle`, `game/unsolvePuzzle`, `game/getCurrent` | ano | ano | ne |
 | `gateway/create`, `gateway/delete` | ano | ne | ne |
 | `gateway/register` | – | – | – |
+| `user/login` | – | – | – |
 | `gateway/getConfig`, `gateway/heartbeat`, `gateway/sendEvents`, `gateway/sendMeasurements`, `gateway/getCommands`, `gateway/ackCommands` | ne | ne | ano |
 
 `gateway/register` nevyžaduje token žádného profilu: volá se před registrací a ověřuje se jednorázovým registračním kódem.
+`user/login` také ne: ověřuje se e-mailem a heslem a teprve vydává JWT.
 
 ## Otevřené body
 
-1. **Přihlášení uživatelů** (`user/login`, založení první provozovny a provozovatele) zatím nemá nikdo
-   přidělené. Návrh: jednoduchý `user/login` (e-mail + heslo → JWT) a skript, který založí první provozovnu
-   a provozovatele. Správa game masterů (US07) je rozšíření.
+1. ~~**Přihlášení uživatelů**~~ – **vyřešeno:** `user/login` (e-mail + heslo → JWT, Command List kap. 10)
+   a skript `server/scripts/create-user.js`, který založí první provozovnu a provozovatele (případně game mastera).
+   Správa game masterů z webu (US07) je rozšíření.
 2. **Přidělení místností game masterům** (BUC08, rozšíření): v MVP vidí game master všechny místnosti provozovny.
