@@ -55,7 +55,7 @@ cd client && npm install && npm run dev     # http://localhost:5173
 | 4 | Aktéři, produkty, business use-cases | ✅ |
 | 6 | Návrh backendu (endpointy, datový model) | ✅ |
 | 7 | Technické řešení IoT části | ✅ |
-| 7 | Základní implementace backendu | ⬜ |
+| 7 | Základní implementace backendu | ✅ |
 | 8 | Základní implementace IoT části | ⬜ |
 | 9 | Návrh frontendu (routy, komponenty) | ⬜ |
 | 10 | Základní implementace frontendu | ⬜ |

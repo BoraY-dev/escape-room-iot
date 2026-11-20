@@ -97,7 +97,7 @@ Indexy: `{ venueId: 1, name: 1 }` unikátní.
 | `type` | `button` \| `accelerometer` \| `thermometer` \| `led` | ano | typ z pevného katalogu |
 | `name` | string (1–100) | ano | srozumitelný název; výchozí hodnota je `hwId` |
 | `lastSeenAt` | date | ne | poslední hlášení, aktualizuje ho i **heartbeat** |
-| `lastValue` | `{ event, value }` | ne | poslední hodnota |
+| `lastValue` | `{ event, value, occurredAt }` | ne | poslední hodnota; `occurredAt` zajistí, že pozdě doručená starší hodnota novější nepřepíše |
 
 Indexy: `{ roomId: 1, hwId: 1 }` unikátní; `{ roomId: 1, name: 1 }` unikátní.
 

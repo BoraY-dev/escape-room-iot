@@ -101,6 +101,10 @@ Aktéři: **Provozovatel**, **Game master**, **Hráč** (jen fyzicky ovládá p�
 | Zapojení IoT Node | GY-521 na I2C (20/21, `0x68`), termistor NTC 10 kΩ v děliči na A0, tlačítko D2 (`INPUT_PULLUP`), LED D8 přes 220 Ω; Arduino napájené z USB RPi 5 | **Provizorně podle datasheetů** (David neaktivní) – ověřit na skutečném HW, viz `docs/03-application-model/iot-hardware.md` kap. 7 |
 | Formát zpráv node ↔ gateway | JSON na řádek, 115 200 Bd; `hwId` = `<NODE_ID>.<zařízení>`; povely nastavují absolutní stav s `cid` + `ack` | Node-RED parsuje jedním uzlem, čitelné, rozšiřitelné; opakovaný povel je neškodný. Detail v `docs/03-application-model/iot-protocol.md` |
 | Retence v cloudu | `event` a `measurement` 90 dní (TTL), doručené `gatewayCommand` 7 dní, výsledky her trvale | Atlas free tier má 512 MB; výsledky zůstávají v `game` |
+| Struktura backendu | Společný obal `registerCommand` místo ručních routes (ověření → validace dtoIn → abl → `uuAppErrorMap`), vrstvy `abl/` a `dao/` | Commandy obsahují jen vlastní logiku; odpovídá DAO Method Listu |
+| Validace dtoIn | Vlastní malý validátor se stejným zápisem jako Command List (`shape`, `string(1,100)`, `id()` …) | Kód se čte stejně jako návrh, vrací `invalidValueKeyMap` i `unsupportedKeys` bez další knihovny |
+| Přihlášení | `user/login` (bcrypt + JWT 12 h), první provozovnu a uživatele zakládá `npm run create-user` | Otevřený bod 1 z Application Profiles; správa uživatelů z webu je rozšíření |
+| Testy a lokální běh | `node --test` + supertest + mongodb-memory-server (replica set kvůli transakcím); `npm run dev:memory` bez Atlasu | Testy nepotřebují cloud; transakce `sendEvents` fungují stejně jako v Atlasu |
 
 ## Milníky
 
@@ -112,7 +116,7 @@ Aktéři: **Provozovatel**, **Game master**, **Hráč** (jen fyzicky ovládá p�
 | 4 | Popsáni klíčoví aktéři, produkty a business use-cases | 2 | ✅ v uuBookKitu |
 | 6 | Návrh backendu (endpointy, datový model) | 2 | ✅ v uuMK (PR #1) |
 | 7 | Navrženo technické řešení IoT části | 2 | ✅ (PR #2) |
-| 7 | Základní implementace backendu | 2 | ⬜ |
+| 7 | Základní implementace backendu | 2 | ✅ (větev `backend-implementation`) |
 | 8 | Základní implementace IoT části (node, gateway) | 2 | ⬜ |
 | 9 | Návrh frontendu (routy, komponenty) | **4** | ⬜ |
 | 10 | Základní implementace frontendu | 2 | ⬜ |
@@ -139,7 +143,9 @@ escape-room-iot/
 
 ```powershell
 # backend
-cd server; npm install; npm run dev      # http://localhost:3000/health
+cd server; npm install; npm run dev      # http://localhost:3000/health (potřebuje .env s MONGODB_URI)
+cd server; npm run dev:memory            # bez Atlasu: databáze v paměti + demo účty (server/README.md)
+cd server; npm test                      # testy API
 # frontend
 cd client; npm install; npm run dev      # http://localhost:5173
 ```
