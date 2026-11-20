@@ -51,10 +51,10 @@ Aktéři: **Provozovatel**, **Game master**, **Hráč** (jen fyzicky ovládá p�
 ```
 [IoT Node]  <--USB serial-->  [Gateway: Node-RED]  --HTTPS-->  [Backend: Express.js]  <--  [Frontend: React]
  Arduino Mega 2560             Raspberry Pi 5                    + MongoDB Atlas
- tlačítko                      - lokální vyhodnocení pravidel
+ 3 tlačítka                    - lokální vyhodnocení pravidel
  akcelerometr GY-521           - downsampling teploty
- termistor                     - perzistentní fronta dat
- LED (výstup)                  - povely pro node (LED)
+ teploměr DHT11                - perzistentní fronta dat
+ 2 LED (výstup)                - povely pro node (LED)
 ```
 
 | Část | Technologie | Složka |
@@ -84,7 +84,7 @@ Aktéři: **Provozovatel**, **Game master**, **Hráč** (jen fyzicky ovládá p�
 |---|---|---|
 | Kde se vyhodnocují pravidla hádanek | Na **gateway**; cloud pravidla ukládá, gateway si je stahuje | Okamžitá odezva pro hráče, hra běží i bez internetu |
 | Co se posílá do cloudu | Herní události (vyřešení, nápověda, ruční zásah) hned; teplota po downsamplingu | Události jsou důležité živě, teplota ne |
-| HW IoT Node | Arduino Mega 2560 + tlačítko, akcelerometr GY-521, termistor, LED | Rozhodnutí týmu (HW dělá David); zadání jiný mikrokontrolér povoluje – **ověřit s vyučujícím povinný nákup HARDWARIO Core Module** |
+| HW IoT Node | Arduino Mega 2560 + 3 tlačítka, akcelerometr GY-521, teploměr DHT11, 2 LED (MVP); klávesnice 4x4, enkodér KY-040, LCD 1602 zapojené pro 2. fázi | Rozhodnutí týmu (HW dělá David); zadání jiný mikrokontrolér povoluje – **ověřit s vyučujícím povinný nákup HARDWARIO Core Module** |
 | Komunikace node ↔ gateway | Sériová linka přes USB, obousměrně (události nahoru, povely dolů); více nodů přes další USB porty / hub; rádio 868 MHz volitelně | Jednoduché, spolehlivé |
 | Databáze | MongoDB (Atlas free tier) – **potvrzeno** | Snadné nasazení zdarma |
 | Rozsah MVP | US01–US04, US09–US12, US14–US17; ostatní jako rozšíření | Malý tým, software dělám sám |
@@ -98,7 +98,9 @@ Aktéři: **Provozovatel**, **Game master**, **Hráč** (jen fyzicky ovládá p�
 | Přístup k databázi | Mongoose | Schémata s validací přímo odpovídají Persistence Layer |
 | Vazba místnost–gateway | Jen `gateway.roomId` (unikátní), bez `room.gatewayId` | Jeden zdroj pravdy; při výměně gateway zůstanou zařízení i pravidla u místnosti |
 | Opakované odeslání z gateway | Unikátní `gatewayEventId` u událostí, `deviceId` + `windowStart` u měření | Po výpadku se data posílají znovu a nesmí vzniknout duplicity |
-| Zapojení IoT Node | GY-521 na I2C (20/21, `0x68`), termistor NTC 10 kΩ v děliči na A0, tlačítko D2 (`INPUT_PULLUP`), LED D8 přes 220 Ω; Arduino napájené z USB RPi 5 | **Provizorně podle datasheetů** (David neaktivní) – ověřit na skutečném HW, viz `docs/03-application-model/iot-hardware.md` kap. 7 |
+| Zapojení IoT Node | Tlačítka D2–D4 (`INPUT_PULLUP`), DHT11 D5, GY-521 na I2C (20/21, `0x68`), LED zelená D22 a červená D23 přes 220 Ω; rozšíření: enkodér D6–D8, klávesnice D30–D37, LCD D40–D45; Arduino napájené z USB RPi 5 | **Skutečný prototyp** (David, 19. 11.); HW se nemění, odchylky od protokolu (rychlost linky) řeší náš firmware |
+| Rozsah HW v MVP | MVP: tlačítka, GY-521, DHT11, LED. Klávesnice, enkodér, LCD = 2. fáze (nové typy zařízení `keypad`, `encoder`, `display`) | Milník 8 do víkendu; rozšíření mění i cloud a frontend |
+| Teploměr DHT11 | Celé °C, čtení à 10 s, vlhkost se v MVP neposílá; limit zpráv node → gateway zvýšen na 512 B | `hello` se 7 zařízeními má ~310 B; DHT11 blokuje ~25 ms, ztracený povel pokryje opakování gateway |
 | Formát zpráv node ↔ gateway | JSON na řádek, 115 200 Bd; `hwId` = `<NODE_ID>.<zařízení>`; povely nastavují absolutní stav s `cid` + `ack` | Node-RED parsuje jedním uzlem, čitelné, rozšiřitelné; opakovaný povel je neškodný. Detail v `docs/03-application-model/iot-protocol.md` |
 | Retence v cloudu | `event` a `measurement` 90 dní (TTL), doručené `gatewayCommand` 7 dní, výsledky her trvale | Atlas free tier má 512 MB; výsledky zůstávají v `game` |
 

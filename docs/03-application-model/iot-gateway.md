@@ -95,7 +95,7 @@ nebo chráněný lokální přístup; samotné `adminAuth` automaticky nechrán�
 ## 4. USB komunikace a dostupnost
 
 Platí společný protokol: **115 200 Bd, 8N1, JSON Lines**, jeden řádek ukončený LF,
-tolerance CRLF. Příjem má limit 256 B a výstup 128 B dle protokolu.
+tolerance CRLF. Příjem má limit 512 B a výstup 128 B dle protokolu.
 Příliš dlouhý řádek se zahazuje až po další LF, neplatný JSON a neznámý typ se počítají v diagnostice.
 
 | Zpráva | Zpracování gateway |

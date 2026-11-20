@@ -3,52 +3,77 @@
 > Zdroj pro stránku **BIOT DL Application Model – Tým 1 → IoT Node** (část hardware).
 > Komunikaci s gateway popisuje `iot-protocol.md`, firmware `iot-node.md`.
 >
-> **Stav návrhu:** zapojení je navržené **podle datasheetů** součástek. Hodnoty označené ⚠️ je potřeba
-> ověřit na skutečném hardwaru (kapitola 7).
+> **Stav:** zapojení odpovídá **skutečnému prototypu** (David Král, 19. 11. 2026), vyzkoušenému na Arduinu Mega 2560.
+> Oproti prvnímu návrhu podle datasheetů: teploměr **DHT11** místo termistoru, **3 tlačítka** místo jednoho,
+> **2 LED** na D22 a D23 místo jedné na D8. Navíc jsou zapojené klávesnice, enkodér a LCD pro 2. fázi (kapitola 6).
 
 ## 1. Součástky
 
-### IoT Node
+### IoT Node – MVP
 
 | Součástka | Typ / parametry | Ks | Účel |
 |---|---|:-:|---|
-| Mikrokontrolér | **Arduino Mega 2560 R3** (ATmega2560, logika 5 V, 16 MHz, 10bitový A/D převodník) | 1 | řízení senzorů, komunikace s gateway |
+| Mikrokontrolér | **Arduino Mega 2560** (ATmega2560, logika 5 V, 16 MHz) | 1 | řízení senzorů, komunikace s gateway |
 | Akcelerometr | **GY-521** (čip MPU-6050, 3osý akcelerometr a gyroskop, I2C, adresa `0x68`) | 1 | náklon a pohyb předmětu |
-| Termistor | NTC **10 kΩ** při 25 °C, **B = 3950** ⚠️ | 1 | teplota |
-| Rezistor | **10 kΩ**, 1 % | 1 | dělič napětí s termistorem |
-| Tlačítko | spínací mikrotlačítko (v klidu rozpojené) | 1 | žádost o nápovědu / vstup hádanky |
-| LED | 5 mm, červená nebo zelená (úbytek napětí asi 2 V) | 1 | signalizace vyřešené hádanky |
-| Rezistor | **220 Ω** | 1 | omezení proudu LED |
+| Teploměr | **DHT11** (modul se 3 vývody, digitální, 0–50 °C, rozlišení 1 °C, přesnost ±2 °C, měří i vlhkost) | 1 | teplota |
+| Tlačítko | spínací mikrotlačítko (v klidu rozpojené) | 3 | nápověda, vstupy hádanek (např. kombinace) |
+| LED | 5 mm, **zelená** a **červená** | 2 | signalizace (vyřešeno / chyba, zamčeno) |
+| Rezistor | **220 Ω** | 2 | omezení proudu LED |
 | Ostatní | nepájivé pole, propojovací vodiče | – | prototyp |
+
+### IoT Node – rozšíření (zapojené, mimo MVP)
+
+| Součástka | Typ | Účel ve 2. fázi |
+|---|---|---|
+| Klávesnice | maticová **4x4** (0–9, A–D, `*`, `#`) | zadání kódu |
+| Rotační enkodér | **KY-040** (s tlačítkem) | „nastavení ručičky“ na správnou hodnotu |
+| Displej | **LCD 1602** paralelně (4bitový režim, bez I2C), potenciometr 10 kΩ na kontrast, rezistor 220 Ω na podsvícení | hlášky pro hráče |
 
 ### Gateway
 
 | Součástka | Typ / parametry | Účel |
 |---|---|---|
-| Počítač | **Raspberry Pi 5** (4 GB RAM stačí) | Node-RED gateway |
+| Počítač | **Raspberry Pi 5** (4 GB RAM stačí) | Node-RED gateway (Node-RED je nainstalovaný) |
 | Napájení | oficiální zdroj Raspberry Pi **27 W USB-C (5 V / 5 A)** | se slabším zdrojem omezí RPi 5 proud do USB portů na 600 mA |
-| Úložiště | microSD karta **min. 16 GB**, třída A1 | Raspberry Pi OS Lite (64 bit), Node-RED, lokální fronta dat |
+| Úložiště | microSD karta **min. 16 GB**, třída A1 | Raspberry Pi OS (64 bit), Node-RED, lokální fronta dat |
 | Kabel | USB-A ↔ USB-B, **nejvýš 5 m** (limit USB 2.0) | napájení Arduina a sériová linka |
 
 Arduino je napájené **z USB portu Raspberry Pi**, samostatný zdroj nepotřebuje. Odhad odběru nodu:
-Arduino asi 50 mA, GY-521 asi 4 mA, LED asi 14 mA, celkem pod 100 mA.
+Arduino asi 50 mA, GY-521 asi 4 mA, DHT11 asi 1 mA, LED 2 × 14 mA, podsvícení LCD asi 15 mA, celkem pod 150 mA.
 
 ## 2. Přiřazení pinů Arduina
 
+### MVP
+
 | Pin Arduina | Připojeno k | `hwId` | Režim |
 |---|---|---|---|
-| **5V** | GY-521 VCC, horní konec děliče termistoru | – | napájení |
-| **GND** | GY-521 GND, termistor, tlačítko, katoda LED | – | společná zem |
+| **5V** | VCC všech modulů | – | napájení |
+| **GND** | GND všech modulů, tlačítka, katody LED | – | společná zem |
+| **D2** | tlačítko 1 (druhý vývod na GND) | `node1.btn1` | `INPUT_PULLUP` |
+| **D3** | tlačítko 2 | `node1.btn2` | `INPUT_PULLUP` |
+| **D4** | tlačítko 3 | `node1.btn3` | `INPUT_PULLUP` |
+| **D5** | DHT11 DATA | `node1.temp1` | digitální, jednovodičový protokol DHT |
 | **20 (SDA)** | GY-521 SDA | `node1.acc1` | I2C data |
 | **21 (SCL)** | GY-521 SCL | `node1.acc1` | I2C hodiny |
-| **A0** | střed děliče (rezistor 10 kΩ / termistor) | `node1.temp1` | analogový vstup |
-| **D2** | tlačítko (druhý vývod na GND) | `node1.btn1` | `INPUT_PULLUP` |
-| **D8** | LED přes rezistor 220 Ω | `node1.led1` | `OUTPUT` |
+| **D22** | zelená LED přes 220 Ω | `node1.led1` | `OUTPUT` |
+| **D23** | červená LED přes 220 Ω | `node1.led2` | `OUTPUT` |
+
+### Rozšíření (2. fáze)
+
+| Pin Arduina | Připojeno k |
+|---|---|
+| **D6** | enkodér SW (tlačítko) |
+| **D7** | enkodér DT |
+| **D8** | enkodér CLK |
+| **D30–D33** | klávesnice řádky 1–4 |
+| **D34–D37** | klávesnice sloupce 1–4 |
+| **D40, D41** | LCD RS, E |
+| **D42–D45** | LCD D4–D7 |
 
 Proč tyto piny:
-- **20 a 21** jsou na Arduinu Mega pevně vyhrazené pro I2C (jinde než na Uno, kde je to A4 a A5).
-- **D2** podporuje přerušení, kdyby bylo potřeba reagovat na stisk mimo hlavní smyčku.
-- **D8** místo D13: na D13 je LED přímo na desce, která bliká při startu bootloaderu. Signalizace hádanky by se tak rozsvítila při každém restartu.
+- **20 a 21** jsou na Arduinu Mega pevně vyhrazené pro I2C.
+- **D22 a výš** jsou na Mega vyvedené na zadní liště, takže výstupy a rozšíření nezabírají piny s přerušením a PWM.
+- LED nejsou na **D13**: tam je LED přímo na desce, která bliká při startu bootloaderu.
 
 ## 3. Zapojení jednotlivých částí
 
@@ -60,45 +85,45 @@ Proč tyto piny:
 | GND | GND |
 | SCL | 21 (SCL) |
 | SDA | 20 (SDA) |
-| AD0 | GND (adresa `0x68`) nebo nezapojeno |
-| INT, XDA, XCL | nezapojeno (firmware čte hodnoty pravidelně) |
+| AD0, INT, XDA, XCL | nezapojeno (adresa `0x68`, firmware čte hodnoty pravidelně) |
 
 **Montáž:** modul se do předmětu upevní tak, aby osa **Z mířila svisle nahoru**, když předmět stojí ve výchozí poloze.
 Firmware pak počítá náklon jako úhel mezi osou Z a svislicí (0° = výchozí poloha, 180° = vzhůru nohama).
 
-### Termistor (dělič napětí)
+### Teploměr DHT11
 
 ```
-5V ──[ rezistor 10 kΩ ]──┬──[ termistor NTC 10 kΩ ]── GND
-                         │
-                        A0
+5V ── VCC [ DHT11 modul ] DATA ── D5
+          [           ] GND  ── GND
 ```
 
-S rostoucí teplotou klesá odpor termistoru, a tím i napětí na A0. Firmware z naměřené hodnoty převodníku
-(0–1023) spočítá odpor termistoru a z něj teplotu podle rovnice s parametrem B:
+Modul má pull-up rezistor na datovém vodiči už na sobě, nic dalšího není potřeba. DHT11 posílá teplotu
+a vlhkost po jednom vodiči. Platí pro něj:
+- měřit se smí **nejvýš jednou za 2 s** (častější čtení vrací starou hodnotu); firmware čte každých 10 s,
+- teplota je v **celých °C** s přesností **±2 °C**, rozsah 0–50 °C,
+- na změnu teploty reaguje pomalu (desítky sekund). Podmínka hádanky „zahřej předmět rukou“ proto musí mít
+  dostatečný rozdíl a čas,
+- jedno čtení trvá asi **25 ms** a knihovna během přenosu na několik milisekund vypne přerušení (dopad na příjem povelů viz `iot-node.md`).
+
+Vlhkost firmware v MVP neposílá; je to možné rozšíření (další typ zařízení).
+
+### Tlačítka
 
 ```
-R_ntc = 10 000 · ADC / (1023 − ADC)
-T [°C] = 1 / ( 1/298,15 + ln(R_ntc / 10 000) / 3950 ) − 273,15
+D2 ──[ tlačítko 1 ]── GND
+D3 ──[ tlačítko 2 ]── GND        (piny v režimu INPUT_PULLUP)
+D4 ──[ tlačítko 3 ]── GND
 ```
 
-Přesnost: kolem 25 °C odpovídá jeden krok převodníku asi 0,2 °C. Firmware proto pro každý vzorek
-průměruje 10 rychle po sobě jdoucích čtení. Tím potlačí šum převodníku a vzorek posílá s přesností na 0,1 °C.
-
-### Tlačítko
-
-```
-D2 ──[ tlačítko ]── GND        (pin v režimu INPUT_PULLUP)
-```
-
-V klidu je na D2 logická 1 (interní pull-up), stisk ji stáhne na 0. Externí rezistor není potřeba.
-Zákmity kontaktů ošetřuje firmware (30 ms).
+V klidu je na pinu logická 1 (interní pull-up), stisk ji stáhne na 0. Externí rezistor není potřeba.
+Zákmity kontaktů ošetřuje firmware (30 ms). Tři tlačítka umožňují hádanky typu „stiskni ve správném pořadí“;
+pořadí vyhodnocuje gateway z jednotlivých událostí `press`.
 
 ### LED
 
 ```
-D8 ──[ rezistor 220 Ω ]──▶|── GND
-                       anoda  katoda (kratší vývod)
+D22 ──[ rezistor 220 Ω ]──▶|── GND      zelená
+D23 ──[ rezistor 220 Ω ]──▶|── GND      červená
 ```
 
 Proud LED: (5 V − 2 V) / 220 Ω ≈ 14 mA. Doporučený proud jednoho pinu Arduina je 20 mA, takže je v bezpečné rezervě.
@@ -106,23 +131,24 @@ Proud LED: (5 V − 2 V) / 220 Ω ≈ 14 mA. Doporučený proud jednoho pinu Ard
 ## 4. Celkové schéma
 
 ```
-                 ┌──────────────────────────────┐
-   USB-B ◀═══════╡        Arduino Mega 2560      │
-  (k RPi 5)      │                              │
-                 │ 5V ─────┬───────────┐        │
-                 │         │           │        │
-                 │      GY-521 VCC   [10 kΩ]    │
-                 │ 20 SDA ─ GY-521 SDA  │        │
-                 │ 21 SCL ─ GY-521 SCL  ├─ A0    │
-                 │         │          [NTC]     │
-                 │ D2 ─[tlačítko]─┐     │        │
-                 │ D8 ─[220 Ω]─▶|─┤     │        │
-                 │                │     │        │
-                 │ GND ─── GY-521 GND ──┴────────┤
-                 └──────────────────────────────┘
+                    ┌────────────────────────────┐
+  tlačítko 1 ── D2  │                            │ D22 ──[220 Ω]──▶|── GND   LED zelená
+  tlačítko 2 ── D3  │                            │ D23 ──[220 Ω]──▶|── GND   LED červená
+  tlačítko 3 ── D4  │      Arduino Mega 2560     │
+  (druhé vývody     │                            │ D30–D37 ── klávesnice 4x4   (rozšíření)
+   na GND)          │                            │
+  DHT11 DATA ── D5  │                            │ D40–D45 ── LCD 1602         (rozšíření)
+  enkodér  D6–D8    │                            │
+  (rozšíření)       │                            │
+  GY-521 SDA ── 20  │                            │
+  GY-521 SCL ── 21  │                            │
+                    │ 5V, GND ── všechny moduly  │
+                    └─────────────┬──────────────┘
+                                  │ USB (data + napájení)
+                           Raspberry Pi 5
 ```
 
-Všechny zemnicí vodiče (GY-521, termistor, tlačítko, LED) vedou na společnou **GND** Arduina.
+Všechny zemnicí vodiče vedou na společnou **GND** Arduina.
 
 ## 5. Gateway
 
@@ -132,28 +158,34 @@ Všechny zemnicí vodiče (GY-521, termistor, tlačítko, LED) vedou na společn
                               zdroj 27 W USB-C
 ```
 
-- Arduino se na RPi objeví jako sériové zařízení `/dev/ttyACM0`. Gateway ho otevírá podle stabilního názvu
-  `/dev/serial/by-id/usb-Arduino…`, který se nezmění, když se připojí další USB zařízení.
+- Arduino se na RPi objeví jako sériové zařízení `/dev/ttyACM0` (klony s čipem CH340 jako `/dev/ttyUSB0`).
+  Gateway ho otevírá podle stabilního názvu `/dev/serial/by-id/usb-…`, který se nezmění, když se připojí další USB zařízení.
+- Rychlost linky je **115 200 Bd** (nastavuje firmware, viz `iot-protocol.md`).
 - Další nody se připojují do dalších USB portů nebo přes USB hub s vlastním napájením.
 - Raspberry Pi 5 má hodiny reálného času; bez záložní baterie se ale čas po výpadku napájení nastaví až přes internet
   (NTP). Doporučujeme proto připojit záložní baterii RTC. Při nesynchronizovaných hodinách gateway vyhlásí závadu
   (detail v `iot-gateway.md`).
 
-## 6. Rozšíření (mimo MVP)
+## 6. Rozšíření (2. fáze, mimo MVP)
 
-Volné piny Arduina Mega (54 digitálních, 16 analogových) umožňují přidat další vstupy a výstupy podle US18 a US19:
-bzučák nebo relé pro magnetický zámek (digitální výstup), další tlačítka a kontakty (digitální vstup),
-další analogové senzory (A1–A15). Každé nové zařízení dostane vlastní `hwId` a ohlásí se ve zprávě `hello`.
+Klávesnice, enkodér a LCD jsou na prototypu zapojené a vyzkoušené, ale firmware MVP je nepoužívá
+a cloud pro ně zatím nemá typy zařízení. Ve 2. fázi přibudou typy `keypad` (událost „zadaný kód“),
+`encoder` (hodnota) a `display` (povel s textem, 2 × 16 znaků se vejde do limitu povelu 128 B) a k nim podmínky a akce pravidel.
 
-## 7. Ověřit při zapojení
+**Známé omezení enkodéru:** D6–D8 nemají na Mega přerušení, firmware je tedy musí číst v hlavní smyčce.
+Během čtení DHT11 (asi 25 ms) by se kroky enkodéru při rychlém otáčení ztrácely. Při zapojení 2. fáze proto
+přepojit CLK a DT na **D18 a D19** (piny s přerušením, volné), nebo DHT11 během otáčení nečíst.
 
-Návrh vychází z datasheetů. Před implementací (týden 8) je potřeba na skutečném hardwaru ověřit:
+Další volné piny (A0–A15, D9–D13, D24–D29, D38, D39, D46–D53) umožňují přidat podle US18 a US19 bzučák nebo relé
+pro magnetický zámek a další senzory. Každé nové zařízení dostane vlastní `hwId` a ohlásí se ve zprávě `hello`.
+
+## 7. Ověřit při oživení s firmwarem
+
+Prototyp je zapojený a součástky fungují s testovacím programem. S firmwarem podle `iot-node.md` zbývá ověřit:
 
 | # | Co | Proč |
 |---|---|---|
-| 1 | typ termistoru: odpor při 25 °C a parametr B | jiné hodnoty = chybná teplota; konstanty se upraví ve firmwaru |
-| 2 | že GY-521 odpovídá na adrese `0x68` (I2C scanner) | při AD0 na 3,3 V je adresa `0x69` |
-| 3 | že I2C komunikace s 5V Arduinem je stabilní | modul je 3,3V; většina modulů GY-521 s 5V Arduinem funguje, jinak převodník úrovní |
-| 4 | úbytek napětí použité LED | jiná barva (modrá, bílá ~3 V) = jiný rezistor |
-| 5 | orientace GY-521 v herním předmětu | výchozí poloha musí odpovídat ose Z nahoru |
-| 6 | že se Arduino na RPi objeví jako `/dev/ttyACM0` | klony Arduina s čipem CH340 se hlásí jako `/dev/ttyUSB0` |
+| 1 | že se Arduino na RPi objeví jako `/dev/ttyACM0`, nebo `/dev/ttyUSB0` | klony s čipem CH340 se hlásí jinak; gateway používá `/dev/serial/by-id/…` |
+| 2 | restart watchdogem | starší bootloadery Mega 2560 se po restartu watchdogem zacyklí (`iot-node.md` kap. 8) |
+| 3 | orientace GY-521 v herním předmětu | výchozí poloha musí odpovídat ose Z nahoru |
+| 4 | zapojení krajních vývodů potenciometru LCD (předpoklad 5V a GND) | ve schématu nejsou zakreslené; týká se jen rozšíření |

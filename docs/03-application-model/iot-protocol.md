@@ -24,7 +24,7 @@ a vykonává povely. Pravidla hádanek, časy událostí a komunikaci s cloudem 
 | Kódování | ASCII / UTF-8 |
 | Rámec | **jedna zpráva = jeden řádek** ukončený `\n` (gateway toleruje i `\r\n`) |
 | Formát zprávy | JSON objekt na jednom řádku („JSON Lines“) |
-| Max. délka | node → gateway 256 B, gateway → node **128 B** (vejde se povel s nejdelším `hwId`, 30 znaků) |
+| Max. délka | node → gateway **512 B** (`hello` se 7 zařízeními má asi 310 B, rezerva na další zařízení), gateway → node **128 B** (vejde se povel s nejdelším `hwId`, 30 znaků) |
 
 **Proč JSON na řádek:** Node-RED zprávu rozparsuje jedním uzlem (`json`), formát je čitelný při ladění
 v sériovém monitoru a nové typy zpráv nebo atributy se dají přidat, aniž by se rozbily stávající.
@@ -40,10 +40,13 @@ Každý node má v firmwaru konstantu `NODE_ID` (např. `node1`). Zařízení na
 
 | `hwId` | Typ | Události / povely |
 |---|---|---|
-| `node1.btn1` | `button` | událost `press` |
+| `node1.btn1`, `node1.btn2`, `node1.btn3` | `button` | událost `press` |
 | `node1.acc1` | `accelerometer` | události `tilt`, `move` |
-| `node1.temp1` | `thermometer` | vzorky teploty (`m`) |
-| `node1.led1` | `led` | povel `led` |
+| `node1.temp1` | `thermometer` | vzorky teploty (`m`), DHT11 |
+| `node1.led1` (zelená), `node1.led2` (červená) | `led` | povel `led` |
+
+Klávesnice, enkodér a LCD zapojené pro 2. fázi (`iot-hardware.md` kap. 6) v protokolu MVP nejsou.
+Přibudou jako nové typy zařízení s vlastními událostmi a povely; díky JSON formátu bez změny stávajících zpráv.
 
 ## 3. Zprávy node → gateway
 
@@ -59,7 +62,7 @@ Po startu nodu, jako odpověď na `who` a znovu, když se změní dostupnost za�
 Obsahuje **jen funkční zařízení**.
 
 ```json
-{"t":"hello","node":"node1","fw":"1.0.0","devices":[{"id":"node1.btn1","type":"button"},{"id":"node1.acc1","type":"accelerometer"},{"id":"node1.temp1","type":"thermometer"},{"id":"node1.led1","type":"led"}]}
+{"t":"hello","node":"node1","fw":"1.0.0","devices":[{"id":"node1.btn1","type":"button"},{"id":"node1.btn2","type":"button"},{"id":"node1.btn3","type":"button"},{"id":"node1.acc1","type":"accelerometer"},{"id":"node1.temp1","type":"thermometer"},{"id":"node1.led1","type":"led"},{"id":"node1.led2","type":"led"}]}
 ```
 
 Gateway podle `hello` sestaví seznam dostupných zařízení pro `gateway/heartbeat`.
@@ -78,10 +81,11 @@ Pásmo 5° zabrání tomu, aby šum akcelerometru kolem jedné hodnoty zaplavil 
 ### m – vzorek teploty
 
 ```json
-{"t":"m","id":"node1.temp1","v":23.4,"seq":45}
+{"t":"m","id":"node1.temp1","v":23,"seq":45}
 ```
 
-Každých **10 s**, teplota ve °C s přesností na 0,1. Gateway vzorek použije okamžitě pro pravidla
+Každých **10 s**, teplota ve °C. DHT11 měří v celých stupních; `v` je číslo, takže přesnější teploměr
+v budoucnu může posílat desetinná místa beze změny protokolu. Gateway vzorek použije okamžitě pro pravidla
 a zároveň ho započítá do downsamplingu (kapitola 6).
 
 ### hb – heartbeat nodu
@@ -108,8 +112,8 @@ a jeho zařízení přestane hlásit v `gateway/heartbeat`. Tlačítko, které n
 
 | `code` | Význam |
 |---|---|
-| `sensorNotResponding` | senzor neodpovídá (např. GY-521 na sběrnici I2C) |
-| `sensorOutOfRange` | hodnota mimo fyzikální rozsah (např. rozpojený termistor) |
+| `sensorNotResponding` | senzor neodpovídá (GY-521 na sběrnici I2C, DHT11 nevrátil hodnotu) |
+| `sensorOutOfRange` | hodnota mimo rozsah senzoru (DHT11: 0–50 °C) |
 | `badMessage` | povel od gateway nešel přečíst (neplatný JSON nebo moc dlouhý řádek) |
 
 Gateway chyby zobrazuje na dashboardu.
@@ -121,7 +125,7 @@ Node odpoví `ack` se stejným `cid` do 100 ms.
 
 | Povel | Příklad | Co node udělá |
 |---|---|---|
-| `led` | `{"t":"led","cid":"17","id":"node1.led1","s":"on"}` | nastaví LED na `on`, `off` nebo `blink` (1 Hz) |
+| `led` | `{"t":"led","cid":"17","id":"node1.led1","s":"on"}` | nastaví zadanou LED (`led1` zelená, `led2` červená) na `on`, `off` nebo `blink` (1 Hz) |
 | `reset` | `{"t":"reset","cid":"18"}` | zhasne všechny LED a vynuluje vnitřní stav (referenci náklonu); senzory dál měří |
 | `who` | `{"t":"who","cid":"19"}` | pošle `hello` |
 
@@ -129,7 +133,8 @@ Node odpoví `ack` se stejným `cid` do 100 ms.
 výsledek je stejný. Díky tomu node nemusí hlídat duplicity, i když gateway povel zopakuje
 (požadavek doručení „alespoň jednou“ z Command Listu pro gateway).
 
-**Opakování:** když `ack` nepřijde do 500 ms, gateway povel zopakuje, nejvýš 3×. Pak závadu zobrazí na dashboardu
+**Opakování:** když `ack` nepřijde do 500 ms, gateway povel zopakuje, nejvýš 3×. Opakování pokryje i povel
+poškozený během čtení DHT11, kdy má node na několik milisekund vypnutá přerušení (`iot-node.md` kap. 5). Pak závadu zobrazí na dashboardu
 a nahlásí ji v heartbeat jako nedostupné zařízení.
 
 Povely z cloudu (`gatewayCommand`) gateway nepřeposílá nodu přímo. Překládá je na povely nodu:
@@ -161,7 +166,7 @@ Neznámé atributy v jinak platné zprávě obě strany ignorují. Firmware a fl
 | Okno bez vzorků | záznam nevzniká |
 
 **Proč medián.** Teplotu v místnosti zkreslují krátké výkyvy: hráč vezme předmět s teploměrem do ruky,
-nebo jedno měření termistoru ujede kvůli rušení. Průměr se jedním takovým výkyvem posune, medián ho ignoruje,
+nebo jedno měření teploměru ujede (DHT11 má přesnost jen ±2 °C). Průměr se jedním takovým výkyvem posune, medián ho ignoruje,
 dokud tvoří menšinu okna. Pro přehled teploty místnosti je důležitá typická hodnota, ne jednotlivé špičky.
 
 **Proč 5 minut.** Teplota místnosti se mění pomalu, takže z jedné hodnoty za 5 minut je trend dobře vidět.

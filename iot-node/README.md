@@ -3,10 +3,12 @@
 Firmware pro Arduino Mega 2560 (Arduino C++).
 
 ## Hardware
-- **tlačítko** – žádost o nápovědu / vstup hádanky,
-- **akcelerometr GY-521** – náklon a pohyb předmětu,
-- **termistor** – teplota,
-- **LED** – výstup (např. signalizace vyřešené hádanky).
+- **3 tlačítka** (D2–D4) – nápověda, vstupy hádanek, kombinace,
+- **akcelerometr GY-521** (I2C 20/21) – náklon a pohyb předmětu,
+- **teploměr DHT11** (D5) – teplota,
+- **2 LED** zelená (D22) a červená (D23) – signalizace.
+
+Zapojení a návrh: `docs/03-application-model/iot-hardware.md`, `iot-node.md`, `iot-protocol.md`.
 
 ## Vývoj
 - Arduino IDE, nebo PlatformIO (rozšíření VS Code).
