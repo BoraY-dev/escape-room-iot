@@ -18,3 +18,4 @@ gateway/.flows*.json.backup
 # Arduino / PlatformIO firmware build
 iot-node/.pio/
 iot-node/build/
+gateway/.dev/

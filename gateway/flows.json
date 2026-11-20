@@ -1,1 +1,2716 @@
-[]
+[
+  {
+    "id": "cfg_db",
+    "type": "sqlitedb",
+    "db": "${GATEWAY_DB}",
+    "mode": "RWC"
+  },
+  {
+    "id": "cfg_serial",
+    "type": "serial-port",
+    "name": "Arduino",
+    "serialport": "${SERIAL_PORT}",
+    "serialbaud": "115200",
+    "databits": "8",
+    "parity": "none",
+    "stopbits": "1",
+    "waitfor": "",
+    "dtr": "none",
+    "rts": "none",
+    "cts": "none",
+    "dsr": "none",
+    "newline": "\\n",
+    "bin": "false",
+    "out": "char",
+    "addchar": "\\n",
+    "responsetimeout": "10000"
+  },
+  {
+    "id": "cfg_ui_base",
+    "type": "ui_base",
+    "theme": {
+      "name": "theme-light"
+    },
+    "site": {
+      "name": "Escape Room Gateway",
+      "hideToolbar": "false",
+      "allowSwipe": "false",
+      "lockMenu": "false",
+      "allowTempTheme": "true",
+      "dateFormat": "DD.MM.YYYY",
+      "sizes": {
+        "sx": 48,
+        "sy": 48,
+        "gx": 6,
+        "gy": 6,
+        "cx": 6,
+        "cy": 6,
+        "px": 0,
+        "py": 0
+      }
+    }
+  },
+  {
+    "id": "ui_tab_gw",
+    "type": "ui_tab",
+    "name": "Gateway",
+    "icon": "dashboard",
+    "order": 1,
+    "disabled": false,
+    "hidden": false
+  },
+  {
+    "id": "ui_grp_state",
+    "type": "ui_group",
+    "name": "Stav gateway",
+    "tab": "ui_tab_gw",
+    "order": 1,
+    "disp": true,
+    "width": "12",
+    "collapse": false,
+    "className": ""
+  },
+  {
+    "id": "ui_grp_reg",
+    "type": "ui_group",
+    "name": "Registrace",
+    "tab": "ui_tab_gw",
+    "order": 2,
+    "disp": true,
+    "width": "12",
+    "collapse": false,
+    "className": ""
+  },
+  {
+    "id": "ui_grp_ctl",
+    "type": "ui_group",
+    "name": "Ovládání",
+    "tab": "ui_tab_gw",
+    "order": 3,
+    "disp": true,
+    "width": "12",
+    "collapse": false,
+    "className": ""
+  },
+  {
+    "id": "tab_start",
+    "type": "tab",
+    "label": "1 Start a databáze",
+    "disabled": false,
+    "info": "Načtení knihovny gw, založení tabulek, obnova stavu z SQLite. Jediný přístup k databázi (DB dotaz, DB transakce)."
+  },
+  {
+    "id": "inj_start",
+    "type": "inject",
+    "z": "tab_start",
+    "name": "start",
+    "props": [
+      {
+        "p": "payload"
+      }
+    ],
+    "repeat": "",
+    "crontab": "",
+    "once": true,
+    "onceDelay": 1,
+    "topic": "",
+    "payload": "",
+    "payloadType": "str",
+    "x": 140,
+    "y": 60,
+    "wires": [
+      [
+        "fn_libinit"
+      ]
+    ]
+  },
+  {
+    "id": "fn_libinit",
+    "type": "function",
+    "z": "tab_start",
+    "name": "Načtení knihovny",
+    "func": "// Knihovna a stav jsou připravené (On Start), start pokračuje založením databáze.\nreturn msg;\n",
+    "outputs": 1,
+    "timeout": 0,
+    "noerr": 0,
+    "initialize": "// [On Start] Načte knihovnu gw (vloží ji build) a připraví sdílený stav gateway v paměti.\n// Knihovna gateway: čisté výpočty bez přístupu k síti a databázi (testy v gateway/test).\n// V Node-RED ji uzel „Načtení knihovny“ při startu vloží do globálního kontextu: global.get(\"gw\").\n// Návrh: docs/03-application-model/iot-gateway.md a iot-protocol.md.\n\nconst gw = (() => {\n  // ---------------------------------------------------------------------------\n  // Protokol node ↔ gateway (iot-protocol.md)\n  // ---------------------------------------------------------------------------\n  const MAX_IN_LINE = 512;          // node → gateway\n  const MAX_OUT_LINE = 128;         // gateway → node včetně \\n\n  const NODE_MESSAGE_TYPES = [\"hello\", \"ev\", \"m\", \"hb\", \"ack\", \"err\"];\n  const DEVICE_TYPES = [\"button\", \"accelerometer\", \"thermometer\", \"led\"];\n  const NODE_OFFLINE_MS = 15000;    // node bez zprávy 15 s = offline\n\n  // Řádek ze sériové linky → { ok, msg } nebo { ok: false, error }\n  function parseLine(raw) {\n    if (typeof raw !== \"string\") raw = String(raw ?? \"\");\n    const line = raw.replace(/\\r?\\n$/, \"\").replace(/\\r$/, \"\");\n    if (!line.trim()) return { ok: false, error: \"empty\" };\n    if (Buffer.byteLength(line, \"utf8\") > MAX_IN_LINE) return { ok: false, error: \"tooLong\" };\n    let msg;\n    try { msg = JSON.parse(line); } catch { return { ok: false, error: \"invalidJson\" }; }\n    if (!msg || typeof msg !== \"object\" || Array.isArray(msg)) return { ok: false, error: \"notObject\" };\n    if (!NODE_MESSAGE_TYPES.includes(msg.t)) return { ok: false, error: \"unknownType\" };\n    const problem = validateNodeMessage(msg);\n    if (problem) return { ok: false, error: problem };\n    return { ok: true, msg };\n  }\n\n  function validateNodeMessage(m) {\n    const isId = (v) => typeof v === \"string\" && v.length >= 1 && v.length <= 30;\n    switch (m.t) {\n      case \"hello\":\n        if (typeof m.node !== \"string\" || !Array.isArray(m.devices)) return \"badHello\";\n        if (!m.devices.every((d) => d && isId(d.id) && DEVICE_TYPES.includes(d.type))) return \"badHelloDevice\";\n        return null;\n      case \"ev\":\n        if (!isId(m.id) || ![\"press\", \"tilt\", \"move\"].includes(m.e)) return \"badEvent\";\n        if (m.e === \"tilt\" && !(Number.isFinite(m.v) && m.v >= 0 && m.v <= 180)) return \"badTilt\";\n        return null;\n      case \"m\":\n        return isId(m.id) && Number.isFinite(m.v) ? null : \"badMeasurement\";\n      case \"hb\":\n        return typeof m.node === \"string\" && Number.isFinite(m.up) ? null : \"badHeartbeat\";\n      case \"ack\":\n        return typeof m.cid === \"string\" && typeof m.ok === \"boolean\" ? null : \"badAck\";\n      case \"err\":\n        return typeof m.code === \"string\" ? null : \"badError\";\n      default:\n        return \"unknownType\";\n    }\n  }\n\n  // Počet ztracených zpráv mezi dvěma seq (modulo 65536); 0 = navazují\n  function seqGap(prev, next) {\n    if (!Number.isInteger(prev) || !Number.isInteger(next)) return 0;\n    return (next - prev - 1 + 65536) % 65536;\n  }\n\n  // Povel pro node jako řádek JSON; null, pokud by překročil limit 128 B\n  function nodeCommandLine(cmd) {\n    const line = JSON.stringify(cmd);\n    return Buffer.byteLength(line, \"utf8\") + 1 <= MAX_OUT_LINE ? line : null;\n  }\n\n  const nodeOfHwId = (hwId) => String(hwId).split(\".\")[0];\n\n  // ---------------------------------------------------------------------------\n  // Downsampling teploty: medián za 5min okno UTC (iot-gateway.md kap. 8)\n  // ---------------------------------------------------------------------------\n  const WINDOW_SEC = 300;\n\n  function windowStartMs(timestampMs, windowSec = WINDOW_SEC) {\n    const size = windowSec * 1000;\n    return Math.floor(timestampMs / size) * size;\n  }\n\n  function median(values) {\n    const sorted = values.filter((v) => Number.isFinite(v)).sort((a, b) => a - b);\n    if (!sorted.length) return null;\n    const mid = Math.floor(sorted.length / 2);\n    return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;\n  }\n\n  // Okno je uzavřené, když už skončilo (konec okna nepatří do okna)\n  const windowClosed = (windowStart, nowMs, windowSec = WINDOW_SEC) => windowStart + windowSec * 1000 <= nowMs;\n\n  // ---------------------------------------------------------------------------\n  // Pravidla hádanek „když – pak“ (command-list-webapp.md, kap. 5)\n  // ---------------------------------------------------------------------------\n  function conditionHolds(condition, value) {\n    if (!condition) return true; // press, move: bez podmínky\n    if (!Number.isFinite(value)) return false;\n    switch (condition.operator) {\n      case \"gt\": return value > condition.value;\n      case \"gte\": return value >= condition.value;\n      case \"lt\": return value < condition.value;\n      case \"lte\": return value <= condition.value;\n      default: return false;\n    }\n  }\n\n  // Které nevyřešené hádanky událost řeší a jaké LED akce spouští.\n  // puzzles: scenario.puzzleList z konfigurace, solved: Set puzzleId už vyřešených\n  function evaluateRules(puzzles, solved, deviceId, eventType, value) {\n    const solvedNow = [];\n    const ledActions = [];\n    for (const puzzle of puzzles ?? []) {\n      if (solved.has(puzzle.id)) continue; // vyřešenou hádanku pravidla znovu neřeší\n      for (const rule of puzzle.ruleList ?? []) {\n        if (rule.trigger?.deviceId !== deviceId || rule.trigger?.eventType !== eventType) continue;\n        if (!conditionHolds(rule.condition, value)) continue;\n        const actions = rule.actionList ?? [];\n        if (actions.some((a) => a.type === \"solvePuzzle\") && !solvedNow.includes(puzzle.id)) solvedNow.push(puzzle.id);\n        for (const a of actions) if (a.type === \"setLed\" && a.deviceId) ledActions.push({ deviceId: a.deviceId, state: a.state });\n        if (solvedNow.includes(puzzle.id)) break;\n      }\n    }\n    return { solvedNow, ledActions };\n  }\n\n  // LED akce hádanky (pro solvePuzzle s runActions)\n  function puzzleLedActions(puzzle) {\n    const out = [];\n    for (const rule of puzzle?.ruleList ?? []) {\n      if (!(rule.actionList ?? []).some((a) => a.type === \"solvePuzzle\")) continue;\n      for (const a of rule.actionList) if (a.type === \"setLed\" && a.deviceId) out.push({ deviceId: a.deviceId, state: a.state });\n    }\n    return out;\n  }\n\n  // Vypršel místní časový limit hry?\n  function gameExpired(game, nowMs) {\n    if (!game || game.state !== \"running\" || !game.startedAt || !game.timeLimitMin) return false;\n    const elapsed = nowMs - Date.parse(game.startedAt) - (game.pausedDurationSec ?? 0) * 1000;\n    return elapsed >= game.timeLimitMin * 60000;\n  }\n\n  // ---------------------------------------------------------------------------\n  // Odesílání do cloudu (iot-gateway.md kap. 7)\n  // ---------------------------------------------------------------------------\n  const BATCH_SIZE = 100;\n\n  // Odstup dalšího pokusu: 2, 4, 8 … nejvýš 60 s, s náhodným rozptylem do 20 %\n  function backoffMs(attempts, random = Math.random) {\n    const base = Math.min(60000, 2000 * 2 ** Math.max(0, attempts - 1));\n    return Math.round(base * (1 + 0.2 * random()));\n  }\n\n  // Vyhodnocení HTTP odpovědi cloudu → co udělat s dávkou\n  function classifyResponse(statusCode, body, headers = {}) {\n    const isApi = body && typeof body === \"object\" && body.uuAppErrorMap && typeof body.uuAppErrorMap === \"object\";\n    // http request uzel při síťové chybě dá do statusCode text (např. ECONNREFUSED)\n    if (typeof statusCode !== \"number\" || !statusCode) return { kind: \"retry\", reason: `network ${statusCode ?? \"\"}`.trim() };\n    if (statusCode >= 200 && statusCode < 300) return isApi ? { kind: \"ok\" } : { kind: \"serviceError\", reason: \"unexpectedBody\" };\n    if (statusCode === 429) {\n      const seconds = Number(headers[\"retry-after\"]);\n      return { kind: \"rateLimited\", retryAfterMs: Number.isFinite(seconds) ? seconds * 1000 : null };\n    }\n    if (statusCode >= 500) return { kind: \"retry\", reason: `http${statusCode}` };\n    if (statusCode === 401 || statusCode === 403) return { kind: \"auth\", reason: `http${statusCode}` };\n    if ([400, 404, 409].includes(statusCode) && isApi) {\n      return { kind: \"dataError\", errorCodes: Object.keys(body.uuAppErrorMap).filter((k) => body.uuAppErrorMap[k].type === \"error\") };\n    }\n    return { kind: \"serviceError\", reason: `http${statusCode}` }; // HTML 404, špatná URL…\n  }\n\n  // Vlastnosti zprávy pro uzel http request. Token jde jen do hlavičky, nikdy do payloadu ani logu;\n  // odpověď uzlu msg.headers přepíše hlavičkami odpovědi, takže token ve zprávě nezůstane.\n  function cloudRequest(baseUrl, method, path, body, token) {\n    const req = {\n      method,\n      url: `${String(baseUrl ?? \"\").replace(/\\/+$/, \"\")}${path}`,\n      headers: { \"Content-Type\": \"application/json\", Accept: \"application/json\" },\n      payload: method === \"GET\" ? undefined : body ?? {},\n      requestTimeout: 15000,\n    };\n    if (token) req.headers.Authorization = `Bearer ${token}`;\n    return req;\n  }\n\n  // Které položky dávky cloud potvrdil (accepted i duplicate)\n  function confirmedKeys(kind, body) {\n    if (kind === \"event\") return new Set([...(body.acceptedEventIdList ?? []), ...(body.duplicateEventIdList ?? [])]);\n    const list = [...(body.acceptedMeasurementList ?? []), ...(body.duplicateMeasurementList ?? [])];\n    return new Set(list.map((m) => measurementKey(m.deviceId, m.windowStart)));\n  }\n\n  const measurementKey = (deviceId, windowStart) => `${deviceId}|${new Date(windowStart).toISOString()}`;\n\n  // ---------------------------------------------------------------------------\n  // SQLite: literály pro dávky v transakci (uzel v režimu batch neumí parametry)\n  // ---------------------------------------------------------------------------\n  function lit(value) {\n    if (value === null || value === undefined) return \"NULL\";\n    if (typeof value === \"number\") {\n      if (!Number.isFinite(value)) throw new Error(\"SQL literal: number must be finite\");\n      return String(value);\n    }\n    if (typeof value === \"boolean\") return value ? \"1\" : \"0\";\n    if (typeof value === \"object\") value = JSON.stringify(value);\n    return `'${String(value).replace(/'/g, \"''\")}'`; // SQLite: apostrof se zdvojí, zpětné lomítko nemá význam\n  }\n\n  const transaction = (statements) => `BEGIN IMMEDIATE;\\n${statements.filter(Boolean).join(\";\\n\")};\\nCOMMIT;`;\n\n  const kvUpsertSql = (key, value, nowMs) =>\n    `INSERT INTO kv (key, value, updatedAt) VALUES (${lit(key)}, ${lit(JSON.stringify(value))}, ${lit(nowMs)}) ` +\n    `ON CONFLICT(key) DO UPDATE SET value = excluded.value, updatedAt = excluded.updatedAt`;\n\n  // Nová položka fronty; INSERT OR IGNORE – stejný klíč (UUID / okno) se nikdy nevloží dvakrát\n  const outboxInsertSql = (kind, itemKey, hwId, payload, state, nowMs) =>\n    `INSERT OR IGNORE INTO outbox (kind, itemKey, hwId, payload, state, createdAt) VALUES ` +\n    `(${lit(kind)}, ${lit(itemKey)}, ${lit(hwId)}, ${lit(JSON.stringify(payload))}, ${lit(state)}, ${lit(nowMs)})`;\n\n  const sqlList = (values) => values.map(lit).join(\", \");\n\n  const SCHEMA = [\n    \"PRAGMA journal_mode=WAL\",\n    \"PRAGMA synchronous=FULL\",\n    `CREATE TABLE IF NOT EXISTS kv (key TEXT PRIMARY KEY, value TEXT NOT NULL, updatedAt INTEGER NOT NULL)`,\n    `CREATE TABLE IF NOT EXISTS outbox (\n      seq INTEGER PRIMARY KEY AUTOINCREMENT,\n      kind TEXT NOT NULL CHECK (kind IN ('event','measurement')),\n      itemKey TEXT NOT NULL UNIQUE,\n      hwId TEXT,\n      payload TEXT NOT NULL,\n      state TEXT NOT NULL CHECK (state IN ('waitingMapping','pending','inFlight','confirmed','quarantined')),\n      attempts INTEGER NOT NULL DEFAULT 0,\n      nextAttemptAt INTEGER NOT NULL DEFAULT 0,\n      lastError TEXT,\n      createdAt INTEGER NOT NULL,\n      confirmedAt INTEGER)`,\n    \"CREATE INDEX IF NOT EXISTS outbox_state ON outbox (kind, state, nextAttemptAt, seq)\",\n    `CREATE TABLE IF NOT EXISTS samples (\n      id INTEGER PRIMARY KEY AUTOINCREMENT,\n      hwId TEXT NOT NULL,\n      receivedAt INTEGER NOT NULL,\n      value REAL NOT NULL,\n      windowStart INTEGER NOT NULL)`,\n    \"CREATE INDEX IF NOT EXISTS samples_window ON samples (hwId, windowStart)\",\n    `CREATE TABLE IF NOT EXISTS command_log (\n      commandId TEXT PRIMARY KEY,\n      type TEXT NOT NULL,\n      payload TEXT NOT NULL,\n      createdAt TEXT NOT NULL,\n      state TEXT NOT NULL CHECK (state IN ('received','executed','confirmed','failed')),\n      receivedAt INTEGER NOT NULL,\n      executedAt INTEGER,\n      confirmedAt INTEGER,\n      lastError TEXT)`,\n  ].join(\";\\n\") + \";\";\n\n  // ---------------------------------------------------------------------------\n  // Registr zařízení → seznam pro gateway/heartbeat\n  // ---------------------------------------------------------------------------\n  // nodes: { node1: { lastSeen, devices: [{id,type}], badDevices: [hwId] } }\n  function availableDevices(nodes, nowMs) {\n    const out = [];\n    for (const n of Object.values(nodes ?? {})) {\n      if (!n.lastSeen || nowMs - n.lastSeen > NODE_OFFLINE_MS) continue;\n      const bad = new Set(n.badDevices ?? []);\n      for (const d of n.devices ?? []) if (!bad.has(d.id)) out.push({ hwId: d.id, type: d.type });\n    }\n    return out;\n  }\n\n  // ---------------------------------------------------------------------------\n  // Stav hry na gateway (iot-gateway.md kap. 5 a 9)\n  // game = { gameId, state, scenarioRevision, timeLimitMin, startedAt, pausedAt, pausedDurationSec,\n  //          puzzles: [{ puzzleId, name, state, solvedAt }] }\n  // ---------------------------------------------------------------------------\n  const clone = (v) => (v === undefined ? undefined : JSON.parse(JSON.stringify(v)));\n\n  function newGameFromConfig(config, gameId, revision) {\n    const scenario = config?.scenario ?? {};\n    return {\n      gameId,\n      state: \"ready\",\n      scenarioRevision: revision ?? scenario.revision ?? 0,\n      timeLimitMin: scenario.timeLimitMin ?? 60,\n      startedAt: null,\n      pausedAt: null,\n      pausedDurationSec: 0,\n      puzzles: (scenario.puzzleList ?? []).map((p) => ({ puzzleId: p.id, name: p.name, state: \"unsolved\", solvedAt: null })),\n    };\n  }\n\n  // Hra z cloudového snímku (gateway/getConfig → currentGame)\n  function gameFromSnapshot(g) {\n    if (!g) return null;\n    return {\n      gameId: g.id, state: g.state, scenarioRevision: g.scenarioRevision, timeLimitMin: g.timeLimitMin,\n      startedAt: g.startedAt, pausedAt: g.pausedAt, pausedDurationSec: g.pausedDurationSec ?? 0,\n      puzzles: (g.puzzleStateList ?? []).map((p) => ({ puzzleId: p.puzzleId, name: p.name, state: p.state, solvedAt: p.solvedAt })),\n    };\n  }\n\n  // Vyhodnocení podnětu ze zařízení (událost nebo vzorek teploty) proti pravidlům běžící hry.\n  // Vrací položky pro frontu (hintRequested, puzzleSolved), LED akce a případně změněnou hru.\n  function applyRules({ config, game, deviceId, eventType, value, nowIso, uuid }) {\n    const result = { items: [], ledActions: [], game, gameChanged: false };\n    const scenario = config?.scenario;\n    // pravidla jen ve stavu running a se správnou revizí konfigurace\n    if (!game || game.state !== \"running\" || !scenario || scenario.revision !== game.scenarioRevision || !deviceId) return result;\n    const next = clone(game);\n\n    if (eventType === \"press\" && scenario.hintDeviceId && scenario.hintDeviceId === deviceId) {\n      result.items.push({ type: \"hintRequested\", gatewayEventId: uuid(), occurredAt: nowIso, gameId: game.gameId, deviceId });\n    }\n    const solved = new Set(next.puzzles.filter((p) => p.state === \"solved\").map((p) => p.puzzleId));\n    const known = new Set(next.puzzles.map((p) => p.puzzleId));\n    const puzzles = (scenario.puzzleList ?? []).filter((p) => known.has(p.id));\n    const { solvedNow, ledActions } = evaluateRules(puzzles, solved, deviceId, eventType, value);\n    for (const puzzleId of solvedNow) {\n      const p = next.puzzles.find((x) => x.puzzleId === puzzleId);\n      p.state = \"solved\";\n      p.solvedAt = nowIso;\n      result.items.push({ type: \"puzzleSolved\", gatewayEventId: uuid(), occurredAt: nowIso, gameId: game.gameId, puzzleId, deviceId });\n    }\n    result.ledActions = ledActions;\n    if (solvedNow.length) {\n      // poslední vyřešená hádanka zastaví místní vyhodnocování (gameCompleted odvodí cloud)\n      if (next.puzzles.length && next.puzzles.every((p) => p.state === \"solved\")) next.state = \"completed\";\n      result.game = next;\n      result.gameChanged = true;\n    }\n    return result;\n  }\n\n  // Provedení cloudového povelu nad místním stavem hry.\n  // Vrací { game, ledActions, resetNodes, needConfig }; needConfig = nejdřív stáhnout správnou konfiguraci.\n  function applyCommand({ config, game, command, nowIso }) {\n    const p = command.payload ?? {};\n    const out = { game: clone(game) ?? null, ledActions: [], resetNodes: false, needConfig: false };\n    const same = out.game && out.game.gameId === p.gameId;\n    switch (command.type) {\n      case \"resetRoom\":\n        if (!config || config.scenario?.revision !== p.scenarioRevision) { out.needConfig = true; return out; }\n        out.game = newGameFromConfig(config, p.gameId, p.scenarioRevision);\n        out.resetNodes = true; // node zhasne všechny LED a vynuluje stav\n        return out;\n      case \"startGame\":\n        if (!same) out.game = newGameFromConfig(config, p.gameId);\n        Object.assign(out.game, { state: \"running\", startedAt: p.startedAt ?? nowIso, timeLimitMin: p.timeLimitMin ?? out.game.timeLimitMin });\n        return out;\n      case \"pauseGame\":\n        if (same && out.game.state === \"running\") Object.assign(out.game, { state: \"paused\", pausedAt: nowIso });\n        return out;\n      case \"resumeGame\":\n        if (same && out.game.state === \"paused\") {\n          const paused = out.game.pausedAt ? Math.max(0, Math.round((Date.parse(nowIso) - Date.parse(out.game.pausedAt)) / 1000)) : 0;\n          Object.assign(out.game, { state: \"running\", pausedAt: null, pausedDurationSec: (out.game.pausedDurationSec ?? 0) + paused });\n        }\n        return out;\n      case \"stopGame\":\n        if (same) out.game.state = p.state ?? \"terminated\";\n        return out;\n      case \"solvePuzzle\":\n      case \"unsolvePuzzle\": {\n        const puzzle = same && out.game.puzzles.find((x) => x.puzzleId === p.puzzleId);\n        if (!puzzle) return out;\n        if (command.type === \"solvePuzzle\") {\n          Object.assign(puzzle, { state: \"solved\", solvedAt: nowIso });\n          if (p.runActions) out.ledActions = puzzleLedActions((config?.scenario?.puzzleList ?? []).find((x) => x.id === p.puzzleId));\n        } else {\n          Object.assign(puzzle, { state: \"unsolved\", solvedAt: null });\n        }\n        return out;\n      }\n      default:\n        return out; // neznámý povel se jen potvrdí\n    }\n  }\n\n  // ---------------------------------------------------------------------------\n  // Pomocníci nad sdíleným stavem (global \"state\")\n  // ---------------------------------------------------------------------------\n  // Posledních 20 chyb pro dashboard (bez tokenů a registračních kódů)\n  function pushError(state, source, message) {\n    state.errors.unshift({ at: new Date().toISOString(), source: String(source), message: String(message).slice(0, 200) });\n    if (state.errors.length > 20) state.errors.length = 20;\n  }\n\n  // LED akce (cloudové deviceId) → povely pro node (hwId); uloží požadovaný stav LED pro obnovu po restartu nodu\n  function ledCommandsFor(state, actions, nowMs, statements) {\n    const hwIdByDevice = Object.fromEntries(Object.entries(state.deviceMap ?? {}).map(([hwId, id]) => [id, hwId]));\n    const commands = [];\n    for (const a of actions ?? []) {\n      const hwId = hwIdByDevice[a.deviceId];\n      if (!hwId) continue;\n      state.leds[hwId] = a.state;\n      commands.push({ t: \"led\", id: hwId, s: a.state });\n    }\n    if (commands.length) statements.push(kvUpsertSql(\"leds\", state.leds, nowMs));\n    return commands;\n  }\n\n  // Výsledek applyRules → SQL příkazy (fronta, stav hry) a LED povely; mění sdílený stav\n  function commitRuleResult(state, result, nowMs) {\n    const statements = result.items.map((it) => outboxInsertSql(\"event\", it.gatewayEventId, null, it, \"pending\", nowMs));\n    if (result.gameChanged) {\n      state.game = result.game;\n      statements.push(kvUpsertSql(\"game\", state.game, nowMs));\n    }\n    const ledCommands = ledCommandsFor(state, result.ledActions, nowMs, statements);\n    return { statements, ledCommands };\n  }\n\n  return {\n    pushError, ledCommandsFor, commitRuleResult,\n    MAX_IN_LINE, MAX_OUT_LINE, NODE_OFFLINE_MS, DEVICE_TYPES, WINDOW_SEC, BATCH_SIZE, SCHEMA,\n    parseLine, seqGap, nodeCommandLine, nodeOfHwId,\n    windowStartMs, median, windowClosed,\n    conditionHolds, evaluateRules, puzzleLedActions, gameExpired,\n    backoffMs, classifyResponse, confirmedKeys, measurementKey, cloudRequest,\n    lit, transaction, kvUpsertSql, outboxInsertSql, sqlList, availableDevices,\n    newGameFromConfig, gameFromSnapshot, applyRules, applyCommand,\n  };\n})();\n\n\n\n// UUID pro události: modul crypto (záložka Setup → Modules), záložně Math.random\ngw.uuid = (typeof crypto !== \"undefined\" && crypto.randomUUID)\n  ? () => crypto.randomUUID()\n  : () => \"xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx\".replace(/[xy]/g, (c) => {\n    const r = (Math.random() * 16) | 0;\n    return (c === \"x\" ? r : (r & 0x3) | 0x8).toString(16);\n  });\n\nglobal.set(\"gw\", gw);\nglobal.set(\"state\", {\n  ready: false,          // stav obnovený z databáze\n  identity: null,        // { gatewayId, roomId, token } – token jen v paměti a v lokální DB\n  config: null,          // poslední konfigurace z gateway/getConfig\n  deviceMap: {},         // hwId → cloudové deviceId\n  game: null,            // místní stav hry\n  leds: {},              // požadované stavy LED { hwId: \"on\" | \"off\" | \"blink\" }\n  nodes: {},             // registr nodů { node1: { lastSeen, up, devices, badDevices, fw } }\n  cloud: { online: false, lastContactAt: null, alarm: null },\n  registration: null,    // výsledek posledního pokusu o registraci (bez kódu)\n  lastTemperature: null,\n  errors: [],            // posledních 20 chyb pro dashboard\n  diag: { badLines: 0, lostMessages: 0 },\n});\n",
+    "finalize": "",
+    "libs": [
+      {
+        "var": "crypto",
+        "module": "crypto"
+      }
+    ],
+    "x": 370,
+    "y": 60,
+    "wires": [
+      [
+        "fn_schema"
+      ]
+    ]
+  },
+  {
+    "id": "fn_schema",
+    "type": "function",
+    "z": "tab_start",
+    "name": "Schéma DB",
+    "func": "// Založí tabulky (pokud chybí) a vrátí nedokončená odeslání zpět do fronty:\n// cloud mohl dávku přijmout a odpověď se ztratila – pošle se znovu se stejnými klíči.\nconst gw = global.get(\"gw\");\nmsg.topic = `${gw.SCHEMA}\\nUPDATE outbox SET state = 'pending' WHERE state = 'inFlight';`;\nreturn msg;\n",
+    "outputs": 1,
+    "timeout": 0,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 600,
+    "y": 60,
+    "wires": [
+      [
+        "lc_schema"
+      ]
+    ]
+  },
+  {
+    "id": "lc_schema",
+    "type": "link call",
+    "z": "tab_start",
+    "name": "DB transakce",
+    "links": [
+      "li_db_batch"
+    ],
+    "linkType": "static",
+    "timeout": "30",
+    "x": 830,
+    "y": 60,
+    "wires": [
+      [
+        "fn_dbload"
+      ]
+    ]
+  },
+  {
+    "id": "fn_dbload",
+    "type": "function",
+    "z": "tab_start",
+    "name": "Načíst stav",
+    "func": "// Dotaz na uložený stav (identita, konfigurace, mapování zařízení, hra, LED).\nmsg.topic = \"SELECT key, value FROM kv\";\nmsg.payload = [];\nreturn msg;\n",
+    "outputs": 1,
+    "timeout": 0,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 1060,
+    "y": 60,
+    "wires": [
+      [
+        "lc_load"
+      ]
+    ]
+  },
+  {
+    "id": "lc_load",
+    "type": "link call",
+    "z": "tab_start",
+    "name": "DB dotaz",
+    "links": [
+      "li_db_query"
+    ],
+    "linkType": "static",
+    "timeout": "30",
+    "x": 1290,
+    "y": 60,
+    "wires": [
+      [
+        "fn_restore"
+      ]
+    ]
+  },
+  {
+    "id": "fn_restore",
+    "type": "function",
+    "z": "tab_start",
+    "name": "Obnovit stav",
+    "func": "// Obnoví stav z tabulky kv do paměti. RAM je jen cache – zdrojem pravdy je lokální SQLite.\n// Výstupy: 1 registrovaná gateway → stáhnout konfiguraci, 2 neregistrovaná + REGISTRATION_CODE → registrace\nconst S = global.get(\"state\");\nfor (const row of msg.payload ?? []) {\n  try {\n    const value = JSON.parse(row.value);\n    if (row.key === \"identity\") S.identity = value;\n    else if (row.key === \"config\") S.config = value;\n    else if (row.key === \"deviceMap\") S.deviceMap = value;\n    else if (row.key === \"game\") S.game = value;\n    else if (row.key === \"leds\") S.leds = value;\n  } catch (e) {\n    node.warn(`kv ${row.key}: ${e.message}`);\n  }\n}\nS.ready = true;\n\nif (S.identity?.token) {\n  node.status({ fill: \"green\", shape: \"dot\", text: `gateway ${S.identity.gatewayId}` });\n  return [{ payload: \"start\" }, null];\n}\nnode.status({ fill: \"yellow\", shape: \"ring\", text: \"čeká na registraci\" });\n// bez dashboardu (např. první nastavení přes SSH) lze kód předat proměnnou prostředí\nconst code = env.get(\"REGISTRATION_CODE\");\nreturn [null, code ? { payload: { code } } : null];\n",
+    "outputs": 2,
+    "timeout": 0,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 1520,
+    "y": 60,
+    "wires": [
+      [
+        "lo_start_config"
+      ],
+      [
+        "lo_start_register"
+      ]
+    ]
+  },
+  {
+    "id": "lo_start_config",
+    "type": "link out",
+    "z": "tab_start",
+    "name": "→ konfigurace",
+    "mode": "link",
+    "links": [
+      "li_config"
+    ],
+    "x": 1750,
+    "y": 60,
+    "wires": []
+  },
+  {
+    "id": "lo_start_register",
+    "type": "link out",
+    "z": "tab_start",
+    "name": "→ registrace",
+    "mode": "link",
+    "links": [
+      "li_register"
+    ],
+    "x": 1750,
+    "y": 130,
+    "wires": []
+  },
+  {
+    "id": "li_db_query",
+    "type": "link in",
+    "z": "tab_start",
+    "name": "DB dotaz",
+    "links": [],
+    "x": 140,
+    "y": 270,
+    "wires": [
+      [
+        "sql_query"
+      ]
+    ]
+  },
+  {
+    "id": "sql_query",
+    "type": "sqlite",
+    "z": "tab_start",
+    "mydb": "cfg_db",
+    "sqlquery": "msg.topic",
+    "sql": "",
+    "name": "SQLite dotaz (msg.topic, parametry v payload)",
+    "x": 370,
+    "y": 270,
+    "wires": [
+      [
+        "lr_query"
+      ]
+    ]
+  },
+  {
+    "id": "lr_query",
+    "type": "link out",
+    "z": "tab_start",
+    "name": "odpověď",
+    "mode": "return",
+    "links": [],
+    "x": 600,
+    "y": 270,
+    "wires": []
+  },
+  {
+    "id": "li_db_batch",
+    "type": "link in",
+    "z": "tab_start",
+    "name": "DB transakce",
+    "links": [],
+    "x": 140,
+    "y": 340,
+    "wires": [
+      [
+        "sql_batch"
+      ]
+    ]
+  },
+  {
+    "id": "sql_batch",
+    "type": "sqlite",
+    "z": "tab_start",
+    "mydb": "cfg_db",
+    "sqlquery": "batch",
+    "sql": "",
+    "name": "SQLite transakce (batch)",
+    "x": 370,
+    "y": 340,
+    "wires": [
+      [
+        "lr_batch"
+      ]
+    ]
+  },
+  {
+    "id": "lr_batch",
+    "type": "link out",
+    "z": "tab_start",
+    "name": "odpověď",
+    "mode": "return",
+    "links": [],
+    "x": 600,
+    "y": 340,
+    "wires": []
+  },
+  {
+    "id": "catch_batch",
+    "type": "catch",
+    "z": "tab_start",
+    "name": "chyba transakce",
+    "scope": [
+      "sql_batch"
+    ],
+    "uncaught": false,
+    "x": 140,
+    "y": 410,
+    "wires": [
+      [
+        "fn_rollback"
+      ]
+    ]
+  },
+  {
+    "id": "fn_rollback",
+    "type": "function",
+    "z": "tab_start",
+    "name": "ROLLBACK",
+    "func": "// Dávka v transakci selhala uprostřed: zrušit rozpracovanou transakci, aby nezůstala otevřená.\nmsg.topic = \"ROLLBACK\";\nreturn msg;\n",
+    "outputs": 1,
+    "timeout": 0,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 370,
+    "y": 410,
+    "wires": [
+      [
+        "sql_rollback"
+      ]
+    ]
+  },
+  {
+    "id": "sql_rollback",
+    "type": "sqlite",
+    "z": "tab_start",
+    "mydb": "cfg_db",
+    "sqlquery": "batch",
+    "sql": "",
+    "name": "SQLite ROLLBACK",
+    "x": 600,
+    "y": 410,
+    "wires": []
+  },
+  {
+    "id": "fn_errlog_start",
+    "type": "function",
+    "z": "tab_start",
+    "name": "Zaznamenat chybu",
+    "func": "// Chyba z libovolného uzlu (catch) → seznam posledních chyb na dashboardu.\nconst gw = global.get(\"gw\");\nconst S = global.get(\"state\");\nconst source = msg.error?.source?.name || msg.error?.source?.type || \"flow\";\ngw.pushError(S, source, msg.error?.message ?? \"neznámá chyba\");\nreturn null;\n",
+    "outputs": 0,
+    "timeout": 0,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 370,
+    "y": 550,
+    "wires": []
+  },
+  {
+    "id": "catch_start",
+    "type": "catch",
+    "z": "tab_start",
+    "name": "chyby záložky",
+    "scope": null,
+    "uncaught": false,
+    "x": 140,
+    "y": 550,
+    "wires": [
+      [
+        "fn_errlog_start"
+      ]
+    ]
+  },
+  {
+    "id": "tab_usb",
+    "type": "tab",
+    "label": "2 Node (USB)",
+    "disabled": false,
+    "info": "Sériová linka s Arduinem: 115 200 Bd, JSON na řádek (iot-protocol.md). Registr nodů, povely s ack."
+  },
+  {
+    "id": "serial_in",
+    "type": "serial in",
+    "z": "tab_usb",
+    "name": "Arduino (USB)",
+    "serial": "cfg_serial",
+    "x": 140,
+    "y": 60,
+    "wires": [
+      [
+        "fn_receive"
+      ]
+    ]
+  },
+  {
+    "id": "li_sim",
+    "type": "link in",
+    "z": "tab_usb",
+    "name": "Simulátor",
+    "links": [
+      "lo_sim"
+    ],
+    "x": 140,
+    "y": 130,
+    "wires": [
+      [
+        "fn_receive"
+      ]
+    ]
+  },
+  {
+    "id": "fn_receive",
+    "type": "function",
+    "z": "tab_usb",
+    "name": "Příjem řádku",
+    "func": "// Příjem řádku z Arduina: validace podle protokolu, registr nodů (hello, hb, err) a rozdělení zpráv.\n// Výstupy: 1 událost (ev), 2 vzorek teploty (m), 3 potvrzení povelu (ack), 4 povely pro node (obnova LED)\nconst gw = global.get(\"gw\");\nconst S = global.get(\"state\");\nconst now = Date.now();\n\nconst parsed = gw.parseLine(msg.payload);\nif (!parsed.ok) {\n  if (parsed.error !== \"empty\") {\n    S.diag.badLines++;\n    gw.pushError(S, \"USB\", `neplatný řádek: ${parsed.error}`);\n  }\n  return null;\n}\nconst m = parsed.msg;\nconst nodeId = m.node ?? (m.id && m.id.includes(\".\") ? gw.nodeOfHwId(m.id) : S.lastNodeId ?? \"node?\");\nconst info = (S.nodes[nodeId] ??= { lastSeen: 0, up: null, devices: [], badDevices: [], lastSeq: null });\nconst wasOffline = !info.lastSeen || now - info.lastSeen > gw.NODE_OFFLINE_MS;\ninfo.lastSeen = now;\nS.lastNodeId = nodeId;\n\n// mezera v seq = ztracený řádek; jen diagnostika, protokol zprávy neopakuje\nif (Number.isInteger(m.seq)) {\n  const gap = gw.seqGap(info.lastSeq, m.seq);\n  if (info.lastSeq !== null && gap > 0 && gap < 1000) S.diag.lostMessages += gap;\n  info.lastSeq = m.seq;\n}\n\n// požadované stavy LED nodu – povely jsou absolutní, opakované poslání nic nepokazí\nconst reapplyLeds = () => Object.entries(S.leds)\n  .filter(([hwId]) => gw.nodeOfHwId(hwId) === nodeId)\n  .map(([hwId, state]) => ({ topic: \"send\", payload: { t: \"led\", id: hwId, s: state } }));\n\nnode.status({ fill: \"green\", shape: \"dot\", text: `${nodeId}: ${m.t}` });\n\nswitch (m.t) {\n  case \"hello\":\n    // seznam funkčních zařízení; obnovit LED (node mohl restartovat)\n    Object.assign(info, { devices: m.devices, badDevices: [], fw: m.fw, lastSeq: null });\n    return [null, null, null, reapplyLeds()];\n  case \"hb\": {\n    const restarted = info.up !== null && m.up < info.up; // uptime kleslo = restart nodu\n    info.up = m.up;\n    return [null, null, null, restarted || wasOffline ? reapplyLeds() : null];\n  }\n  case \"err\":\n    // vadný senzor se vyřadí z heartbeat, dokud nepřijdou platná data nebo nové hello\n    if (m.id && m.id.includes(\".\") && !info.badDevices.includes(m.id)) info.badDevices.push(m.id);\n    gw.pushError(S, nodeId, `${m.id ?? nodeId}: ${m.code}`);\n    return null;\n  case \"ev\":\n  case \"m\":\n    info.badDevices = info.badDevices.filter((d) => d !== m.id); // platná data = senzor funguje\n    msg.payload = m;\n    msg.receivedAt = now; // čas vzniku přiděluje gateway při přijetí\n    return m.t === \"ev\" ? [msg, null, null, null] : [null, msg, null, null];\n  case \"ack\":\n    msg.topic = \"ack\";\n    msg.payload = m;\n    return [null, null, msg, null];\n  default:\n    return null;\n}\n",
+    "outputs": 4,
+    "timeout": 0,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 370,
+    "y": 60,
+    "wires": [
+      [
+        "lo_event"
+      ],
+      [
+        "lo_sample"
+      ],
+      [
+        "fn_queue"
+      ],
+      [
+        "fn_queue"
+      ]
+    ]
+  },
+  {
+    "id": "lo_event",
+    "type": "link out",
+    "z": "tab_usb",
+    "name": "→ událost",
+    "mode": "link",
+    "links": [
+      "li_event"
+    ],
+    "x": 600,
+    "y": 60,
+    "wires": []
+  },
+  {
+    "id": "lo_sample",
+    "type": "link out",
+    "z": "tab_usb",
+    "name": "→ teplota",
+    "mode": "link",
+    "links": [
+      "li_sample"
+    ],
+    "x": 600,
+    "y": 130,
+    "wires": []
+  },
+  {
+    "id": "li_cmd",
+    "type": "link in",
+    "z": "tab_usb",
+    "name": "Povel pro node",
+    "links": [
+      "lo_game_cmd",
+      "lo_cloud_cmd"
+    ],
+    "x": 370,
+    "y": 270,
+    "wires": [
+      [
+        "fn_queue"
+      ]
+    ]
+  },
+  {
+    "id": "inj_watch",
+    "type": "inject",
+    "z": "tab_usb",
+    "name": "každých 5 s",
+    "props": [
+      {
+        "p": "payload"
+      }
+    ],
+    "repeat": "5",
+    "crontab": "",
+    "once": false,
+    "onceDelay": 0.1,
+    "topic": "",
+    "payload": "",
+    "payloadType": "str",
+    "x": 370,
+    "y": 340,
+    "wires": [
+      [
+        "fn_watchdog"
+      ]
+    ]
+  },
+  {
+    "id": "fn_watchdog",
+    "type": "function",
+    "z": "tab_usb",
+    "name": "Kontrola nodů",
+    "func": "// Každých 5 s: node bez zprávy 15 s je offline; když žádný node není online, požádá o ohlášení (who) –\n// po otevření portu se Arduino restartuje a hello může přijít dřív, než gateway začne poslouchat.\nconst gw = global.get(\"gw\");\nconst S = global.get(\"state\");\nconst now = Date.now();\n\nlet online = 0;\nfor (const [id, n] of Object.entries(S.nodes)) {\n  const isOnline = now - n.lastSeen <= gw.NODE_OFFLINE_MS;\n  if (isOnline) online++;\n  if (!isOnline && n.online === true) gw.pushError(S, id, \"node je offline (15 s bez zprávy)\");\n  n.online = isOnline;\n}\n\nnode.status({ fill: online ? \"green\" : \"red\", shape: \"dot\", text: `online nodů: ${online}` });\nconst lastWho = context.get(\"lastWho\") ?? 0;\nif (online === 0 && now - lastWho >= 15000) {\n  context.set(\"lastWho\", now);\n  return { topic: \"send\", payload: { t: \"who\" } };\n}\nreturn null;\n",
+    "outputs": 1,
+    "timeout": 0,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 600,
+    "y": 340,
+    "wires": [
+      [
+        "fn_queue"
+      ]
+    ]
+  },
+  {
+    "id": "fn_queue",
+    "type": "function",
+    "z": "tab_usb",
+    "name": "Sériová fronta (cid, ack)",
+    "func": "// Sériová fronta povelů pro node: přidělí cid, posílá po jednom, čeká na ack 500 ms a nejvýš 3× zopakuje.\n// Vstup: topic \"send\" (payload = povel bez cid: led / reset / who) nebo \"ack\" (payload = ack z nodu).\n// Výstup: řádek JSON pro uzel serial out (konec řádku přidá konfigurace portu).\nconst gw = global.get(\"gw\");\nconst S = global.get(\"state\");\nconst ACK_TIMEOUT_MS = 500;\nconst MAX_RETRIES = 3;\nconst MAX_QUEUE = 50;\n\nconst st = context.get(\"st\") ?? { queue: [], active: null, counter: Math.floor(Math.random() * 100000) };\ncontext.set(\"st\", st);\n\nfunction transmit() {\n  const job = st.active;\n  node.send({ payload: job.line });\n  job.timer = setTimeout(onTimeout, ACK_TIMEOUT_MS);\n}\n\nfunction onTimeout() {\n  const job = st.active;\n  if (!job) return;\n  if (job.attempts >= MAX_RETRIES) {\n    // \"who\" bez odpovědi je běžné (node není připojený) – nehlásit jako chybu\n    if (job.cmd.t !== \"who\") gw.pushError(S, \"USB\", `povel ${job.cmd.t} ${job.cmd.id ?? \"\"} bez potvrzení`);\n    node.status({ fill: \"red\", shape: \"ring\", text: `bez ack: ${job.cmd.t}` });\n    st.active = null;\n    startNext();\n    return;\n  }\n  job.attempts++;\n  transmit();\n}\n\nfunction startNext() {\n  if (st.active || !st.queue.length) return;\n  st.active = st.queue.shift();\n  transmit();\n}\n\nif (msg.topic === \"ack\") {\n  const job = st.active;\n  if (job && job.cid === msg.payload.cid) {\n    clearTimeout(job.timer);\n    if (msg.payload.ok === false) gw.pushError(S, \"USB\", `node odmítl ${job.cmd.t}: ${msg.payload.err ?? \"?\"}`);\n    st.active = null;\n    startNext();\n  }\n  return null;\n}\n\n// nový povel\nst.counter = (st.counter + 1) % 100000000; // cid nejvýš 8 znaků\nconst cid = String(st.counter);\nconst line = gw.nodeCommandLine({ ...msg.payload, cid });\nif (!line) {\n  gw.pushError(S, \"USB\", \"povel je delší než 128 B\");\n  return null;\n}\nif (st.queue.length >= MAX_QUEUE) st.queue.shift(); // nejstarší čekající povel zahodit (LED jsou absolutní stavy)\nst.queue.push({ cid, cmd: msg.payload, line, attempts: 0, timer: null });\nnode.status({ fill: \"green\", shape: \"dot\", text: `${msg.payload.t} (cid ${cid}), ve frontě ${st.queue.length}` });\nstartNext();\nreturn null;\n",
+    "outputs": 1,
+    "timeout": 0,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "// [On Stop] Zastaví časovač čekání na ack.\nconst st = context.get(\"st\");\nif (st?.active?.timer) clearTimeout(st.active.timer);\ncontext.set(\"st\", undefined);\n",
+    "libs": [],
+    "x": 830,
+    "y": 200,
+    "wires": [
+      [
+        "serial_out"
+      ]
+    ]
+  },
+  {
+    "id": "serial_out",
+    "type": "serial out",
+    "z": "tab_usb",
+    "name": "Arduino (USB)",
+    "serial": "cfg_serial",
+    "x": 1060,
+    "y": 200,
+    "wires": []
+  },
+  {
+    "id": "fn_errlog_usb",
+    "type": "function",
+    "z": "tab_usb",
+    "name": "Zaznamenat chybu",
+    "func": "// Chyba z libovolného uzlu (catch) → seznam posledních chyb na dashboardu.\nconst gw = global.get(\"gw\");\nconst S = global.get(\"state\");\nconst source = msg.error?.source?.name || msg.error?.source?.type || \"flow\";\ngw.pushError(S, source, msg.error?.message ?? \"neznámá chyba\");\nreturn null;\n",
+    "outputs": 0,
+    "timeout": 0,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 370,
+    "y": 480,
+    "wires": []
+  },
+  {
+    "id": "catch_usb",
+    "type": "catch",
+    "z": "tab_usb",
+    "name": "chyby záložky",
+    "scope": null,
+    "uncaught": false,
+    "x": 140,
+    "y": 480,
+    "wires": [
+      [
+        "fn_errlog_usb"
+      ]
+    ]
+  },
+  {
+    "id": "tab_game",
+    "type": "tab",
+    "label": "3 Hra a data",
+    "disabled": false,
+    "info": "Události do fronty, lokální pravidla hádanek, vzorky teploty a medián za 5min okno UTC."
+  },
+  {
+    "id": "li_event",
+    "type": "link in",
+    "z": "tab_game",
+    "name": "Událost",
+    "links": [
+      "lo_event"
+    ],
+    "x": 140,
+    "y": 60,
+    "wires": [
+      [
+        "fn_event"
+      ]
+    ]
+  },
+  {
+    "id": "fn_event",
+    "type": "function",
+    "z": "tab_game",
+    "name": "Zpracovat událost",
+    "func": "// Událost zařízení (press / tilt / move): uloží ji do fronty a vyhodnotí pravidla běžící hry\n// (nápověda, vyřešení hádanky). Vše v jedné transakci; LED povely se pošlou až po zápisu.\nconst gw = global.get(\"gw\");\nconst S = global.get(\"state\");\nconst ev = msg.payload;\nconst now = msg.receivedAt ?? Date.now();\nconst nowIso = new Date(now).toISOString();\nconst deviceId = S.deviceMap[ev.id] ?? null;\nconst game = S.game;\nconst gameActive = game && [\"running\", \"paused\"].includes(game.state);\n\n// UUID se přidělí hned při vzniku a při opakovaném odeslání se nemění\nconst item = {\n  gatewayEventId: gw.uuid(),\n  occurredAt: nowIso,\n  type: \"deviceEvent\",\n  ...(gameActive && { gameId: game.gameId }),\n  ...(deviceId && { deviceId }),\n  value: { event: ev.e, ...(ev.e === \"tilt\" && { value: ev.v }) },\n};\n// bez cloudového deviceId čeká událost na mapování (doplní ho heartbeat)\nconst statements = [gw.outboxInsertSql(\"event\", item.gatewayEventId, ev.id, item, deviceId ? \"pending\" : \"waitingMapping\", now)];\n\nconst result = gw.applyRules({ config: S.config, game, deviceId, eventType: ev.e, value: ev.v, nowIso, uuid: gw.uuid });\nconst { statements: ruleStatements, ledCommands } = gw.commitRuleResult(S, result, now);\n\nnode.status({ fill: \"green\", shape: \"dot\", text: `${ev.id} ${ev.e}${result.items.length ? `, ${result.items.map((i) => i.type).join(\", \")}` : \"\"}` });\nmsg.topic = gw.transaction([...statements, ...ruleStatements]);\nmsg.ledCommands = ledCommands;\nmsg.kind = \"event\";\nreturn msg;\n",
+    "outputs": 1,
+    "timeout": 0,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 370,
+    "y": 60,
+    "wires": [
+      [
+        "lc_event"
+      ]
+    ]
+  },
+  {
+    "id": "lc_event",
+    "type": "link call",
+    "z": "tab_game",
+    "name": "DB transakce",
+    "links": [
+      "li_db_batch"
+    ],
+    "linkType": "static",
+    "timeout": "30",
+    "x": 600,
+    "y": 60,
+    "wires": [
+      [
+        "fn_after"
+      ]
+    ]
+  },
+  {
+    "id": "li_sample",
+    "type": "link in",
+    "z": "tab_game",
+    "name": "Teplota",
+    "links": [
+      "lo_sample"
+    ],
+    "x": 140,
+    "y": 130,
+    "wires": [
+      [
+        "fn_sample"
+      ]
+    ]
+  },
+  {
+    "id": "fn_sample",
+    "type": "function",
+    "z": "tab_game",
+    "name": "Uložit vzorek",
+    "func": "// Vzorek teploty (každých 10 s): uloží ho pro medián okna 5 min UTC a hned vyhodnotí teplotní pravidla\n// nad okamžitou hodnotou (pravidla na medián nečekají).\nconst gw = global.get(\"gw\");\nconst S = global.get(\"state\");\nconst m = msg.payload;\nconst now = msg.receivedAt ?? Date.now();\nconst nowIso = new Date(now).toISOString();\nconst deviceId = S.deviceMap[m.id] ?? null;\n\nconst statements = [\n  `INSERT INTO samples (hwId, receivedAt, value, windowStart) VALUES (${gw.lit(m.id)}, ${gw.lit(now)}, ${gw.lit(m.v)}, ${gw.lit(gw.windowStartMs(now))})`,\n];\nconst result = gw.applyRules({ config: S.config, game: S.game, deviceId, eventType: \"temperature\", value: m.v, nowIso, uuid: gw.uuid });\nconst { statements: ruleStatements, ledCommands } = gw.commitRuleResult(S, result, now);\n\nS.lastTemperature = { hwId: m.id, value: m.v, at: nowIso };\nnode.status({ fill: \"green\", shape: \"dot\", text: `${m.id}: ${m.v} °C` });\nmsg.topic = gw.transaction([...statements, ...ruleStatements]);\nmsg.ledCommands = ledCommands;\nmsg.kind = \"event\";\nreturn msg;\n",
+    "outputs": 1,
+    "timeout": 0,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 370,
+    "y": 130,
+    "wires": [
+      [
+        "lc_sample"
+      ]
+    ]
+  },
+  {
+    "id": "lc_sample",
+    "type": "link call",
+    "z": "tab_game",
+    "name": "DB transakce",
+    "links": [
+      "li_db_batch"
+    ],
+    "linkType": "static",
+    "timeout": "30",
+    "x": 600,
+    "y": 130,
+    "wires": [
+      [
+        "fn_after"
+      ]
+    ]
+  },
+  {
+    "id": "inj_windows",
+    "type": "inject",
+    "z": "tab_game",
+    "name": "každých 10 s",
+    "props": [
+      {
+        "p": "payload"
+      }
+    ],
+    "repeat": "10",
+    "crontab": "",
+    "once": false,
+    "onceDelay": 0.1,
+    "topic": "",
+    "payload": "",
+    "payloadType": "str",
+    "x": 140,
+    "y": 200,
+    "wires": [
+      [
+        "fn_winq"
+      ]
+    ]
+  },
+  {
+    "id": "fn_winq",
+    "type": "function",
+    "z": "tab_game",
+    "name": "Uzavřená okna",
+    "func": "// Každých 10 s: najde uzavřená okna teploty (okno [start, start + 5 min) už skončilo).\n// Po restartu tak uzavře i okna, která zůstala otevřená před výpadkem.\nconst gw = global.get(\"gw\");\n// parametry jako pole (uzel SQLite: délka pole = počet \"$\" v dotazu)\nmsg.topic = \"SELECT hwId, windowStart, group_concat(value) AS vals FROM samples WHERE windowStart <= $1 GROUP BY hwId, windowStart\";\nmsg.payload = [Date.now() - gw.WINDOW_SEC * 1000];\nreturn msg;\n",
+    "outputs": 1,
+    "timeout": 0,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 370,
+    "y": 200,
+    "wires": [
+      [
+        "lc_winq"
+      ]
+    ]
+  },
+  {
+    "id": "lc_winq",
+    "type": "link call",
+    "z": "tab_game",
+    "name": "DB dotaz",
+    "links": [
+      "li_db_query"
+    ],
+    "linkType": "static",
+    "timeout": "30",
+    "x": 600,
+    "y": 200,
+    "wires": [
+      [
+        "fn_winclose"
+      ]
+    ]
+  },
+  {
+    "id": "fn_winclose",
+    "type": "function",
+    "z": "tab_game",
+    "name": "Medián a měření",
+    "func": "// Uzavření okna: medián vzorků → jedno měření do fronty a smazání surových vzorků, vše v jedné transakci.\n// Medián tlumí krátké výkyvy (teploměr v ruce hráče), 5min okno zachová trend a snižuje objem dat 30×.\nconst gw = global.get(\"gw\");\nconst S = global.get(\"state\");\nconst rows = msg.payload ?? [];\nif (!rows.length) return null;\n\nconst now = Date.now();\nconst statements = [];\nfor (const row of rows) {\n  const values = String(row.vals).split(\",\").map(Number).filter(Number.isFinite);\n  const value = gw.median(values);\n  const windowStart = new Date(row.windowStart).toISOString();\n  const windowEnd = new Date(row.windowStart + gw.WINDOW_SEC * 1000).toISOString();\n  if (value !== null) {\n    const deviceId = S.deviceMap[row.hwId] ?? null;\n    const payload = { ...(deviceId && { deviceId }), value: Math.round(value * 10) / 10, sampleCount: values.length, windowStart, windowEnd };\n    // klíč okna je stabilní (hwId + windowStart), takže okno nikdy nevznikne dvakrát\n    statements.push(gw.outboxInsertSql(\"measurement\", `${row.hwId}|${windowStart}`, row.hwId, payload, deviceId ? \"pending\" : \"waitingMapping\", now));\n  }\n  statements.push(`DELETE FROM samples WHERE hwId = ${gw.lit(row.hwId)} AND windowStart = ${gw.lit(row.windowStart)}`);\n}\nnode.status({ fill: \"green\", shape: \"dot\", text: `uzavřeno oken: ${rows.length}` });\nmsg.topic = gw.transaction(statements);\nmsg.kind = \"measurement\";\nreturn msg;\n",
+    "outputs": 1,
+    "timeout": 0,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 830,
+    "y": 200,
+    "wires": [
+      [
+        "lc_winclose"
+      ]
+    ]
+  },
+  {
+    "id": "lc_winclose",
+    "type": "link call",
+    "z": "tab_game",
+    "name": "DB transakce",
+    "links": [
+      "li_db_batch"
+    ],
+    "linkType": "static",
+    "timeout": "30",
+    "x": 1060,
+    "y": 200,
+    "wires": [
+      [
+        "fn_after"
+      ]
+    ]
+  },
+  {
+    "id": "fn_after",
+    "type": "function",
+    "z": "tab_game",
+    "name": "Po zápisu",
+    "func": "// Po zápisu do databáze: pošle LED povely nodu a spustí odeslání do cloudu.\n// Výstupy: 1 povely pro node, 2 podnět pro odesílač (event / measurement)\nconst commands = (msg.ledCommands ?? []).map((c) => ({ topic: \"send\", payload: c }));\nreturn [commands, { payload: msg.kind ?? \"event\" }];\n",
+    "outputs": 2,
+    "timeout": 0,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 1290,
+    "y": 60,
+    "wires": [
+      [
+        "lo_game_cmd"
+      ],
+      [
+        "lo_game_send"
+      ]
+    ]
+  },
+  {
+    "id": "lo_game_cmd",
+    "type": "link out",
+    "z": "tab_game",
+    "name": "→ povel pro node",
+    "mode": "link",
+    "links": [
+      "li_cmd"
+    ],
+    "x": 1520,
+    "y": 60,
+    "wires": []
+  },
+  {
+    "id": "lo_game_send",
+    "type": "link out",
+    "z": "tab_game",
+    "name": "→ odeslat",
+    "mode": "link",
+    "links": [
+      "li_send"
+    ],
+    "x": 1520,
+    "y": 130,
+    "wires": []
+  },
+  {
+    "id": "inj_gametimer",
+    "type": "inject",
+    "z": "tab_game",
+    "name": "každých 5 s",
+    "props": [
+      {
+        "p": "payload"
+      }
+    ],
+    "repeat": "5",
+    "crontab": "",
+    "once": false,
+    "onceDelay": 0.1,
+    "topic": "",
+    "payload": "",
+    "payloadType": "str",
+    "x": 140,
+    "y": 340,
+    "wires": [
+      [
+        "fn_gametimer"
+      ]
+    ]
+  },
+  {
+    "id": "fn_gametimer",
+    "type": "function",
+    "z": "tab_game",
+    "name": "Hlídat čas hry",
+    "func": "// Každých 5 s: po vypršení časového limitu zastaví místní vyhodnocování pravidel.\n// Událost gameExpired gateway neposílá – vypršení hry odvodí cloud ze svého časovače.\nconst gw = global.get(\"gw\");\nconst S = global.get(\"state\");\nconst now = Date.now();\nif (!gw.gameExpired(S.game, now)) return null;\nS.game = { ...S.game, state: \"expired\" };\nnode.status({ fill: \"grey\", shape: \"dot\", text: `hra ${S.game.gameId} vypršela` });\nmsg.topic = gw.transaction([gw.kvUpsertSql(\"game\", S.game, now)]);\nreturn msg;\n",
+    "outputs": 1,
+    "timeout": 0,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 370,
+    "y": 340,
+    "wires": [
+      [
+        "lc_gametimer"
+      ]
+    ]
+  },
+  {
+    "id": "lc_gametimer",
+    "type": "link call",
+    "z": "tab_game",
+    "name": "DB transakce",
+    "links": [
+      "li_db_batch"
+    ],
+    "linkType": "static",
+    "timeout": "30",
+    "x": 600,
+    "y": 340,
+    "wires": []
+  },
+  {
+    "id": "fn_errlog_game",
+    "type": "function",
+    "z": "tab_game",
+    "name": "Zaznamenat chybu",
+    "func": "// Chyba z libovolného uzlu (catch) → seznam posledních chyb na dashboardu.\nconst gw = global.get(\"gw\");\nconst S = global.get(\"state\");\nconst source = msg.error?.source?.name || msg.error?.source?.type || \"flow\";\ngw.pushError(S, source, msg.error?.message ?? \"neznámá chyba\");\nreturn null;\n",
+    "outputs": 0,
+    "timeout": 0,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 370,
+    "y": 480,
+    "wires": []
+  },
+  {
+    "id": "catch_game",
+    "type": "catch",
+    "z": "tab_game",
+    "name": "chyby záložky",
+    "scope": null,
+    "uncaught": false,
+    "x": 140,
+    "y": 480,
+    "wires": [
+      [
+        "fn_errlog_game"
+      ]
+    ]
+  },
+  {
+    "id": "tab_cloud",
+    "type": "tab",
+    "label": "4 Cloud",
+    "disabled": false,
+    "info": "HTTPS komunikace s cloudem (command-list-gateway.md): odesílání dávek, heartbeat, konfigurace, povely, registrace, retence."
+  },
+  {
+    "id": "li_send",
+    "type": "link in",
+    "z": "tab_cloud",
+    "name": "Odeslat",
+    "links": [
+      "lo_game_send"
+    ],
+    "x": 140,
+    "y": 60,
+    "wires": [
+      [
+        "fn_sendsel"
+      ]
+    ]
+  },
+  {
+    "id": "inj_send_ev",
+    "type": "inject",
+    "z": "tab_cloud",
+    "name": "události à 3 s",
+    "props": [
+      {
+        "p": "payload"
+      }
+    ],
+    "repeat": "3",
+    "crontab": "",
+    "once": false,
+    "onceDelay": 0.1,
+    "topic": "",
+    "payload": "event",
+    "payloadType": "str",
+    "x": 140,
+    "y": 130,
+    "wires": [
+      [
+        "fn_sendsel"
+      ]
+    ]
+  },
+  {
+    "id": "inj_send_m",
+    "type": "inject",
+    "z": "tab_cloud",
+    "name": "měření à 10 s",
+    "props": [
+      {
+        "p": "payload"
+      }
+    ],
+    "repeat": "10",
+    "crontab": "",
+    "once": false,
+    "onceDelay": 0.1,
+    "topic": "",
+    "payload": "measurement",
+    "payloadType": "str",
+    "x": 140,
+    "y": 200,
+    "wires": [
+      [
+        "fn_sendsel"
+      ]
+    ]
+  },
+  {
+    "id": "fn_sendsel",
+    "type": "function",
+    "z": "tab_cloud",
+    "name": "Vybrat dávku",
+    "func": "// Výběr dávky k odeslání (msg.payload = \"event\" | \"measurement\"). Pro každý druh dat běží nejvýš\n// jedno odeslání najednou; nedostupný cloud nezastaví příjem z USB ani lokální logiku.\nconst gw = global.get(\"gw\");\nconst S = global.get(\"state\");\nconst kind = msg.payload === \"measurement\" ? \"measurement\" : \"event\";\nif (!S.ready || !S.identity?.token || !env.get(\"CLOUD_URL\")) return null;\n\nconst busy = flow.get(`busy_${kind}`);\nif (busy && Date.now() - busy < 60000) return null; // předchozí odeslání ještě běží (pojistka 60 s)\nflow.set(`busy_${kind}`, Date.now());\n\nconst limit = flow.get(`limit_${kind}`) ?? gw.BATCH_SIZE; // při izolaci vadné položky se dávka zmenšuje\nmsg.kind = kind;\nmsg.limit = limit;\n// uzel SQLite bere parametry jen jako pole, jejichž délka odpovídá počtu \"$\" v dotazu\nmsg.topic = \"SELECT seq, itemKey, payload, attempts FROM outbox WHERE kind = $1 AND state = 'pending' AND nextAttemptAt <= $2 ORDER BY seq LIMIT $3\";\nmsg.payload = [kind, Date.now(), limit];\nreturn msg;\n",
+    "outputs": 1,
+    "timeout": 0,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 370,
+    "y": 60,
+    "wires": [
+      [
+        "lc_sendsel"
+      ]
+    ]
+  },
+  {
+    "id": "lc_sendsel",
+    "type": "link call",
+    "z": "tab_cloud",
+    "name": "DB dotaz",
+    "links": [
+      "li_db_query"
+    ],
+    "linkType": "static",
+    "timeout": "30",
+    "x": 600,
+    "y": 60,
+    "wires": [
+      [
+        "fn_sendprep"
+      ]
+    ]
+  },
+  {
+    "id": "fn_sendprep",
+    "type": "function",
+    "z": "tab_cloud",
+    "name": "Připravit odeslání",
+    "func": "// Označí vybrané položky jako odesílané (inFlight) a připraví tělo požadavku. Payload se už nemění.\nconst gw = global.get(\"gw\");\nconst rows = msg.payload ?? [];\nif (!rows.length) {\n  flow.set(`busy_${msg.kind}`, 0);\n  return null;\n}\nconst items = rows.map((r) => ({ seq: r.seq, payload: JSON.parse(r.payload), attempts: r.attempts + 1 }));\n// klíč, podle kterého cloud potvrzuje: UUID události / deviceId + windowStart měření\nconst key = (it) => (msg.kind === \"event\" ? it.payload.gatewayEventId : gw.measurementKey(it.payload.deviceId, it.payload.windowStart));\n\nmsg.batch = { kind: msg.kind, full: rows.length === msg.limit, items: items.map((it) => ({ seq: it.seq, key: key(it), attempts: it.attempts })) };\nmsg.body = msg.kind === \"event\" ? { eventList: items.map((i) => i.payload) } : { measurementList: items.map((i) => i.payload) };\nmsg.topic = gw.transaction([`UPDATE outbox SET state = 'inFlight', attempts = attempts + 1 WHERE seq IN (${gw.sqlList(items.map((i) => i.seq))})`]);\nreturn msg;\n",
+    "outputs": 1,
+    "timeout": 0,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 830,
+    "y": 60,
+    "wires": [
+      [
+        "lc_sendprep"
+      ]
+    ]
+  },
+  {
+    "id": "lc_sendprep",
+    "type": "link call",
+    "z": "tab_cloud",
+    "name": "DB transakce",
+    "links": [
+      "li_db_batch"
+    ],
+    "linkType": "static",
+    "timeout": "30",
+    "x": 1060,
+    "y": 60,
+    "wires": [
+      [
+        "fn_sendhttp"
+      ]
+    ]
+  },
+  {
+    "id": "fn_sendhttp",
+    "type": "function",
+    "z": "tab_cloud",
+    "name": "HTTP požadavek",
+    "func": "// HTTPS požadavek na cloud (gateway/sendEvents nebo gateway/sendMeasurements) s tokenem gateway.\nconst gw = global.get(\"gw\");\nconst S = global.get(\"state\");\nconst path = msg.batch.kind === \"event\" ? \"/gateway/sendEvents\" : \"/gateway/sendMeasurements\";\nObject.assign(msg, gw.cloudRequest(env.get(\"CLOUD_URL\"), \"POST\", path, msg.body, S.identity?.token));\ndelete msg.topic;\ndelete msg.body;\nreturn msg;\n",
+    "outputs": 1,
+    "timeout": 0,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 1290,
+    "y": 60,
+    "wires": [
+      [
+        "http_send"
+      ]
+    ]
+  },
+  {
+    "id": "http_send",
+    "type": "http request",
+    "z": "tab_cloud",
+    "name": "sendEvents / sendMeasurements",
+    "method": "use",
+    "ret": "obj",
+    "paytoqs": "ignore",
+    "url": "",
+    "tls": "",
+    "persist": false,
+    "proxy": "",
+    "insecureHTTPParser": false,
+    "authType": "",
+    "senderr": false,
+    "headers": [],
+    "x": 1520,
+    "y": 60,
+    "wires": [
+      [
+        "fn_sendres"
+      ]
+    ]
+  },
+  {
+    "id": "fn_sendres",
+    "type": "function",
+    "z": "tab_cloud",
+    "name": "Vyhodnotit odpověď",
+    "func": "// Vyhodnocení odpovědi cloudu (iot-gateway.md kap. 7):\n// potvrzené položky → confirmed; výpadek / 5xx / 429 → nový pokus s rostoucím odstupem;\n// 401/403 a chybná URL → alarm, data zůstávají; trvale odmítnutá data → dělení dávky a karanténa jedné položky.\nconst gw = global.get(\"gw\");\nconst S = global.get(\"state\");\nconst now = Date.now();\nconst { kind, items, full } = msg.batch;\nconst cls = gw.classifyResponse(msg.statusCode, msg.payload, msg.headers ?? {});\nconst seqs = (list) => gw.sqlList(list.map((i) => i.seq));\nconst retry = (item, delayMs, reason) =>\n  `UPDATE outbox SET state = 'pending', nextAttemptAt = ${gw.lit(now + delayMs)}, lastError = ${gw.lit(reason)} WHERE seq = ${gw.lit(item.seq)}`;\nconst cloudState = (online, alarm) => {\n  S.cloud.online = online;\n  if (online) S.cloud.lastContactAt = new Date(now).toISOString();\n  S.cloud.alarm = alarm;\n};\n\nconst statements = [];\nlet more = false;\nswitch (cls.kind) {\n  case \"ok\": {\n    // potvrzené jsou jen položky, jejichž klíč je v accepted nebo duplicate seznamu\n    const confirmed = gw.confirmedKeys(kind, msg.payload);\n    const ok = items.filter((i) => confirmed.has(i.key));\n    const rest = items.filter((i) => !confirmed.has(i.key));\n    if (ok.length) statements.push(`UPDATE outbox SET state = 'confirmed', confirmedAt = ${gw.lit(now)}, lastError = NULL WHERE seq IN (${seqs(ok)})`);\n    for (const i of rest) statements.push(retry(i, gw.backoffMs(i.attempts), \"notConfirmed\"));\n    flow.set(`limit_${kind}`, gw.BATCH_SIZE);\n    cloudState(true, null);\n    more = full; // plná dávka → ve frontě je nejspíš další\n    break;\n  }\n  case \"retry\":\n    for (const i of items) statements.push(retry(i, gw.backoffMs(i.attempts), cls.reason));\n    cloudState(false, null);\n    break;\n  case \"rateLimited\":\n    for (const i of items) statements.push(retry(i, cls.retryAfterMs ?? gw.backoffMs(i.attempts), \"429\"));\n    break;\n  case \"auth\":\n    for (const i of items) statements.push(retry(i, 60000, cls.reason));\n    cloudState(true, `cloud odmítl token (${cls.reason}) – gateway smazaná nebo zablokovaná?`);\n    break;\n  case \"serviceError\":\n    for (const i of items) statements.push(retry(i, 60000, cls.reason));\n    cloudState(false, `neočekávaná odpověď (${cls.reason}) – zkontrolovat CLOUD_URL`);\n    break;\n  case \"dataError\":\n    if (items.length > 1) {\n      // dávka obsahuje vadnou položku: poslat znovu v pořadí po polovinách, dokud se neizoluje\n      flow.set(`limit_${kind}`, Math.ceil(items.length / 2));\n      statements.push(`UPDATE outbox SET state = 'pending', nextAttemptAt = 0 WHERE seq IN (${seqs(items)})`);\n    } else {\n      const error = JSON.stringify({ status: msg.statusCode, codes: cls.errorCodes });\n      statements.push(`UPDATE outbox SET state = 'quarantined', lastError = ${gw.lit(error)} WHERE seq = ${gw.lit(items[0].seq)}`);\n      gw.pushError(S, \"cloud\", `záznam v karanténě: ${cls.errorCodes.join(\", \")}`);\n      flow.set(`limit_${kind}`, gw.BATCH_SIZE);\n    }\n    more = true;\n    cloudState(true, null);\n    break;\n}\n\nnode.status(cls.kind === \"ok\"\n  ? { fill: \"green\", shape: \"dot\", text: `${kind}: potvrzeno ${items.length}` }\n  : { fill: \"yellow\", shape: \"ring\", text: `${kind}: ${cls.kind} ${cls.reason ?? \"\"}` });\nmsg.topic = gw.transaction(statements);\nmsg.payload = null;\nmsg.more = more;\nreturn msg;\n",
+    "outputs": 1,
+    "timeout": 0,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 1750,
+    "y": 60,
+    "wires": [
+      [
+        "lc_sendres"
+      ]
+    ]
+  },
+  {
+    "id": "lc_sendres",
+    "type": "link call",
+    "z": "tab_cloud",
+    "name": "DB transakce",
+    "links": [
+      "li_db_batch"
+    ],
+    "linkType": "static",
+    "timeout": "30",
+    "x": 1980,
+    "y": 60,
+    "wires": [
+      [
+        "fn_senddone"
+      ]
+    ]
+  },
+  {
+    "id": "fn_senddone",
+    "type": "function",
+    "z": "tab_cloud",
+    "name": "Konec odeslání",
+    "func": "// Konec odeslání: uvolní zámek; při plné dávce nebo izolaci vadné položky hned pokračuje další dávkou.\nflow.set(`busy_${msg.batch.kind}`, 0);\nreturn msg.more ? { payload: msg.batch.kind } : null;\n",
+    "outputs": 1,
+    "timeout": 0,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 2210,
+    "y": 60,
+    "wires": [
+      [
+        "fn_sendsel"
+      ]
+    ]
+  },
+  {
+    "id": "inj_hb",
+    "type": "inject",
+    "z": "tab_cloud",
+    "name": "heartbeat à 30 s",
+    "props": [
+      {
+        "p": "payload"
+      }
+    ],
+    "repeat": "30",
+    "crontab": "",
+    "once": true,
+    "onceDelay": 5,
+    "topic": "",
+    "payload": "",
+    "payloadType": "str",
+    "x": 140,
+    "y": 340,
+    "wires": [
+      [
+        "fn_hb"
+      ]
+    ]
+  },
+  {
+    "id": "li_hb",
+    "type": "link in",
+    "z": "tab_cloud",
+    "name": "Heartbeat",
+    "links": [],
+    "x": 140,
+    "y": 410,
+    "wires": [
+      [
+        "fn_hb"
+      ]
+    ]
+  },
+  {
+    "id": "fn_hb",
+    "type": "function",
+    "z": "tab_cloud",
+    "name": "Heartbeat",
+    "func": "// Cloudový heartbeat každých 30 s: úplný seznam právě dostupných zařízení a lokálně uložená revize\n// konfigurace. Heartbeat se neukládá do fronty – po výpadku se posílá jen aktuální stav.\nconst gw = global.get(\"gw\");\nconst S = global.get(\"state\");\nif (!S.ready || !S.identity?.token || !env.get(\"CLOUD_URL\")) return null;\nconst body = {\n  scenarioRevision: S.config?.scenario?.revision ?? 0, // 0 = gateway zatím nemá konfiguraci\n  deviceList: gw.availableDevices(S.nodes, Date.now()),\n};\nreturn gw.cloudRequest(env.get(\"CLOUD_URL\"), \"POST\", \"/gateway/heartbeat\", body, S.identity.token);\n",
+    "outputs": 1,
+    "timeout": 0,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 370,
+    "y": 340,
+    "wires": [
+      [
+        "http_hb"
+      ]
+    ]
+  },
+  {
+    "id": "http_hb",
+    "type": "http request",
+    "z": "tab_cloud",
+    "name": "gateway/heartbeat",
+    "method": "use",
+    "ret": "obj",
+    "paytoqs": "ignore",
+    "url": "",
+    "tls": "",
+    "persist": false,
+    "proxy": "",
+    "insecureHTTPParser": false,
+    "authType": "",
+    "senderr": false,
+    "headers": [],
+    "x": 600,
+    "y": 340,
+    "wires": [
+      [
+        "fn_hbres"
+      ]
+    ]
+  },
+  {
+    "id": "fn_hbres",
+    "type": "function",
+    "z": "tab_cloud",
+    "name": "Výsledek heartbeat",
+    "func": "// Odpověď heartbeat: mapování hwId → deviceId, příznak změny konfigurace a počet čekajících povelů.\n// Výstupy: 1 uložení mapování, 2 stáhnout konfiguraci, 3 doplnit mapování do fronty\nconst gw = global.get(\"gw\");\nconst S = global.get(\"state\");\nconst now = Date.now();\nconst cls = gw.classifyResponse(msg.statusCode, msg.payload, msg.headers ?? {});\n\nif (cls.kind !== \"ok\") {\n  S.cloud.online = cls.kind === \"auth\" || cls.kind === \"dataError\";\n  S.cloud.alarm = cls.kind === \"auth\" ? \"cloud odmítl token – gateway smazaná nebo zablokovaná?\"\n    : cls.kind === \"dataError\" ? `heartbeat odmítnut: ${cls.errorCodes.join(\", \")}`\n      : cls.kind === \"serviceError\" ? `neočekávaná odpověď (${cls.reason}) – zkontrolovat CLOUD_URL` : null;\n  if (cls.kind === \"dataError\") gw.pushError(S, \"heartbeat\", cls.errorCodes.join(\", \"));\n  node.status({ fill: \"red\", shape: \"ring\", text: `heartbeat: ${cls.reason ?? cls.kind}` });\n  return null;\n}\n\nObject.assign(S.cloud, { online: true, lastContactAt: new Date(now).toISOString(), alarm: null, pendingCommands: msg.payload.pendingCommandCount });\nlet mappingChanged = false;\nfor (const d of msg.payload.deviceList ?? []) {\n  if (S.deviceMap[d.hwId] !== d.id) {\n    S.deviceMap[d.hwId] = d.id;\n    mappingChanged = true;\n  }\n}\nnode.status({ fill: \"green\", shape: \"dot\", text: `OK, zařízení ${msg.payload.deviceList?.length ?? 0}${msg.payload.configChanged ? \", nová konfigurace\" : \"\"}` });\nreturn [\n  mappingChanged ? { topic: gw.transaction([gw.kvUpsertSql(\"deviceMap\", S.deviceMap, now)]) } : null,\n  msg.payload.configChanged ? { payload: \"configChanged\" } : null,\n  mappingChanged ? { payload: \"mapping\" } : null,\n];\n",
+    "outputs": 3,
+    "timeout": 0,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 830,
+    "y": 340,
+    "wires": [
+      [
+        "lc_hbmap"
+      ],
+      [
+        "fn_cfgreq"
+      ],
+      [
+        "fn_mapq"
+      ]
+    ]
+  },
+  {
+    "id": "lc_hbmap",
+    "type": "link call",
+    "z": "tab_cloud",
+    "name": "DB transakce",
+    "links": [
+      "li_db_batch"
+    ],
+    "linkType": "static",
+    "timeout": "30",
+    "x": 1060,
+    "y": 340,
+    "wires": []
+  },
+  {
+    "id": "li_config",
+    "type": "link in",
+    "z": "tab_cloud",
+    "name": "Konfigurace",
+    "links": [
+      "lo_start_config",
+      "lo_ui_config"
+    ],
+    "x": 830,
+    "y": 480,
+    "wires": [
+      [
+        "fn_cfgreq"
+      ]
+    ]
+  },
+  {
+    "id": "fn_cfgreq",
+    "type": "function",
+    "z": "tab_cloud",
+    "name": "Požadavek getConfig",
+    "func": "// Stažení konfigurace místnosti: při startu, při configChanged z heartbeat a tlačítkem na dashboardu.\nconst gw = global.get(\"gw\");\nconst S = global.get(\"state\");\nif (!S.ready || !S.identity?.token || !env.get(\"CLOUD_URL\")) return null;\nreturn gw.cloudRequest(env.get(\"CLOUD_URL\"), \"GET\", \"/gateway/getConfig\", null, S.identity.token);\n",
+    "outputs": 1,
+    "timeout": 0,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 1060,
+    "y": 480,
+    "wires": [
+      [
+        "http_cfg"
+      ]
+    ]
+  },
+  {
+    "id": "http_cfg",
+    "type": "http request",
+    "z": "tab_cloud",
+    "name": "gateway/getConfig",
+    "method": "use",
+    "ret": "obj",
+    "paytoqs": "ignore",
+    "url": "",
+    "tls": "",
+    "persist": false,
+    "proxy": "",
+    "insecureHTTPParser": false,
+    "authType": "",
+    "senderr": false,
+    "headers": [],
+    "x": 1290,
+    "y": 480,
+    "wires": [
+      [
+        "fn_cfgsave"
+      ]
+    ]
+  },
+  {
+    "id": "fn_cfgsave",
+    "type": "function",
+    "z": "tab_cloud",
+    "name": "Uložit konfiguraci",
+    "func": "// Uloží konfiguraci z cloudu jedním zápisem (při výpadku se použije poslední uložená kopie)\n// a doplní mapování hwId → deviceId. Výstupy: 1 zápis do DB, 2 doplnit mapování ve frontě\nconst gw = global.get(\"gw\");\nconst S = global.get(\"state\");\nconst cls = gw.classifyResponse(msg.statusCode, msg.payload, msg.headers ?? {});\nif (cls.kind !== \"ok\") {\n  node.status({ fill: \"red\", shape: \"ring\", text: `getConfig: ${cls.reason ?? cls.kind}` });\n  if (cls.kind === \"auth\") S.cloud.alarm = \"cloud odmítl token – gateway smazaná nebo zablokovaná?\";\n  return null;\n}\nconst now = Date.now();\nconst { uuAppErrorMap, ...config } = msg.payload;\nS.config = config;\nfor (const d of config.deviceList ?? []) S.deviceMap[d.hwId] = d.id;\nconst statements = [gw.kvUpsertSql(\"config\", config, now), gw.kvUpsertSql(\"deviceMap\", S.deviceMap, now)];\n\n// stav hry z cloudu převezme jen tehdy, když žádný místní nemá – novější místní stav nepřepisuje\nif (!S.game && config.currentGame) {\n  S.game = gw.gameFromSnapshot(config.currentGame);\n  statements.push(gw.kvUpsertSql(\"game\", S.game, now));\n}\nnode.status({ fill: \"green\", shape: \"dot\", text: `revize ${config.scenario?.revision}, zařízení ${config.deviceList?.length ?? 0}` });\nreturn [{ topic: gw.transaction(statements) }, { payload: \"mapping\" }];\n",
+    "outputs": 2,
+    "timeout": 0,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 1520,
+    "y": 480,
+    "wires": [
+      [
+        "lc_cfgsave"
+      ],
+      [
+        "fn_mapq"
+      ]
+    ]
+  },
+  {
+    "id": "lc_cfgsave",
+    "type": "link call",
+    "z": "tab_cloud",
+    "name": "DB transakce",
+    "links": [
+      "li_db_batch"
+    ],
+    "linkType": "static",
+    "timeout": "30",
+    "x": 1750,
+    "y": 480,
+    "wires": []
+  },
+  {
+    "id": "fn_mapq",
+    "type": "function",
+    "z": "tab_cloud",
+    "name": "Čekající na mapování",
+    "func": "// Položky fronty, které čekají na cloudové deviceId (vznikly dřív, než heartbeat zařízení zaregistroval).\nmsg.topic = \"SELECT seq, hwId, payload FROM outbox WHERE state = 'waitingMapping' ORDER BY seq LIMIT 500\";\nmsg.payload = [];\nreturn msg;\n",
+    "outputs": 1,
+    "timeout": 0,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 1290,
+    "y": 410,
+    "wires": [
+      [
+        "lc_mapq"
+      ]
+    ]
+  },
+  {
+    "id": "lc_mapq",
+    "type": "link call",
+    "z": "tab_cloud",
+    "name": "DB dotaz",
+    "links": [
+      "li_db_query"
+    ],
+    "linkType": "static",
+    "timeout": "30",
+    "x": 1520,
+    "y": 410,
+    "wires": [
+      [
+        "fn_mapapply"
+      ]
+    ]
+  },
+  {
+    "id": "fn_mapapply",
+    "type": "function",
+    "z": "tab_cloud",
+    "name": "Doplnit mapování",
+    "func": "// Doplní deviceId do čekajících položek a uvolní je k odeslání. UUID a čas vzniku se zachovají;\n// položka ještě nebyla odeslána, takže doplnění payloadu je v pořádku.\nconst gw = global.get(\"gw\");\nconst S = global.get(\"state\");\nconst statements = [];\nfor (const row of msg.payload ?? []) {\n  const deviceId = S.deviceMap[row.hwId];\n  if (!deviceId) continue;\n  const payload = { ...JSON.parse(row.payload), deviceId };\n  statements.push(`UPDATE outbox SET payload = ${gw.lit(JSON.stringify(payload))}, state = 'pending' WHERE seq = ${gw.lit(row.seq)} AND state = 'waitingMapping'`);\n}\nif (!statements.length) return null;\nnode.status({ fill: \"green\", shape: \"dot\", text: `doplněno mapování: ${statements.length}` });\nmsg.topic = gw.transaction(statements);\nreturn msg;\n",
+    "outputs": 1,
+    "timeout": 0,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 1750,
+    "y": 410,
+    "wires": [
+      [
+        "lc_mapapply"
+      ]
+    ]
+  },
+  {
+    "id": "lc_mapapply",
+    "type": "link call",
+    "z": "tab_cloud",
+    "name": "DB transakce",
+    "links": [
+      "li_db_batch"
+    ],
+    "linkType": "static",
+    "timeout": "30",
+    "x": 1980,
+    "y": 410,
+    "wires": [
+      [
+        "fn_nudge"
+      ]
+    ]
+  },
+  {
+    "id": "fn_nudge",
+    "type": "function",
+    "z": "tab_cloud",
+    "name": "Spustit odesílání",
+    "func": "// Spustí odeslání událostí i měření (po doplnění mapování nebo po registraci).\nreturn [[{ payload: \"event\" }, { payload: \"measurement\" }]];\n",
+    "outputs": 1,
+    "timeout": 0,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 2210,
+    "y": 410,
+    "wires": [
+      [
+        "fn_sendsel"
+      ]
+    ]
+  },
+  {
+    "id": "inj_cmd",
+    "type": "inject",
+    "z": "tab_cloud",
+    "name": "povely à 2 s",
+    "props": [
+      {
+        "p": "payload"
+      }
+    ],
+    "repeat": "2",
+    "crontab": "",
+    "once": true,
+    "onceDelay": 6,
+    "topic": "",
+    "payload": "",
+    "payloadType": "str",
+    "x": 140,
+    "y": 620,
+    "wires": [
+      [
+        "fn_cmdpoll"
+      ]
+    ]
+  },
+  {
+    "id": "fn_cmdpoll",
+    "type": "function",
+    "z": "tab_cloud",
+    "name": "Vyzvednout povely",
+    "func": "// Každé 2 s vyzvedne čekající povely z cloudu (gateway/getCommands). Další dotaz až po dokončení předchozího.\nconst gw = global.get(\"gw\");\nconst S = global.get(\"state\");\nif (!S.ready || !S.identity?.token || !env.get(\"CLOUD_URL\")) return null;\nconst busy = flow.get(\"busy_commands\");\nif (busy && Date.now() - busy < 30000) return null;\nflow.set(\"busy_commands\", Date.now());\nreturn gw.cloudRequest(env.get(\"CLOUD_URL\"), \"GET\", \"/gateway/getCommands?limit=100\", null, S.identity.token);\n",
+    "outputs": 1,
+    "timeout": 0,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 370,
+    "y": 620,
+    "wires": [
+      [
+        "http_cmd"
+      ]
+    ]
+  },
+  {
+    "id": "http_cmd",
+    "type": "http request",
+    "z": "tab_cloud",
+    "name": "gateway/getCommands",
+    "method": "use",
+    "ret": "obj",
+    "paytoqs": "ignore",
+    "url": "",
+    "tls": "",
+    "persist": false,
+    "proxy": "",
+    "insecureHTTPParser": false,
+    "authType": "",
+    "senderr": false,
+    "headers": [],
+    "x": 600,
+    "y": 620,
+    "wires": [
+      [
+        "fn_cmdstore"
+      ]
+    ]
+  },
+  {
+    "id": "fn_cmdstore",
+    "type": "function",
+    "z": "tab_cloud",
+    "name": "Uložit nové povely",
+    "func": "// Nové povely nejdřív trvale uloží do command_log (stejné commandId se nevloží dvakrát).\n// Výstupy: 1 zápis nových povelů, 2 žádné nové povely → rovnou dotaz na povely k provedení\nconst gw = global.get(\"gw\");\nconst S = global.get(\"state\");\nconst cls = gw.classifyResponse(msg.statusCode, msg.payload, msg.headers ?? {});\nif (cls.kind !== \"ok\") {\n  flow.set(\"busy_commands\", 0);\n  node.status({ fill: \"red\", shape: \"ring\", text: `getCommands: ${cls.reason ?? cls.kind}` });\n  return null;\n}\nconst items = msg.payload.itemList ?? [];\nif (!items.length) return [null, { payload: [] }];\nconst now = Date.now();\nconst statements = items.map((c) =>\n  `INSERT OR IGNORE INTO command_log (commandId, type, payload, createdAt, state, receivedAt) VALUES ` +\n  `(${gw.lit(c.id)}, ${gw.lit(c.type)}, ${gw.lit(JSON.stringify(c.payload ?? {}))}, ${gw.lit(c.createdAt)}, 'received', ${gw.lit(now)})`);\nnode.status({ fill: \"blue\", shape: \"dot\", text: `přijato povelů: ${items.length}` });\nreturn [{ topic: gw.transaction(statements) }, null];\n",
+    "outputs": 2,
+    "timeout": 0,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 830,
+    "y": 620,
+    "wires": [
+      [
+        "lc_cmdstore"
+      ],
+      [
+        "fn_cmdq"
+      ]
+    ]
+  },
+  {
+    "id": "lc_cmdstore",
+    "type": "link call",
+    "z": "tab_cloud",
+    "name": "DB transakce",
+    "links": [
+      "li_db_batch"
+    ],
+    "linkType": "static",
+    "timeout": "30",
+    "x": 1060,
+    "y": 620,
+    "wires": [
+      [
+        "fn_cmdq"
+      ]
+    ]
+  },
+  {
+    "id": "fn_cmdq",
+    "type": "function",
+    "z": "tab_cloud",
+    "name": "Povely k provedení",
+    "func": "// Povely k provedení (received) a provedené, ale v cloudu zatím nepotvrzené (executed), v pořadí cloudu.\nmsg.topic = \"SELECT commandId, type, payload, state FROM command_log WHERE state IN ('received', 'executed') ORDER BY createdAt, commandId\";\nmsg.payload = [];\nreturn msg;\n",
+    "outputs": 1,
+    "timeout": 0,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 1290,
+    "y": 620,
+    "wires": [
+      [
+        "lc_cmdq"
+      ]
+    ]
+  },
+  {
+    "id": "lc_cmdq",
+    "type": "link call",
+    "z": "tab_cloud",
+    "name": "DB dotaz",
+    "links": [
+      "li_db_query"
+    ],
+    "linkType": "static",
+    "timeout": "30",
+    "x": 1520,
+    "y": 620,
+    "wires": [
+      [
+        "fn_cmdexec"
+      ]
+    ]
+  },
+  {
+    "id": "fn_cmdexec",
+    "type": "function",
+    "z": "tab_cloud",
+    "name": "Provést povely",
+    "func": "// Provede přijaté povely v pořadí cloudu nad místním stavem hry. Povel, který čeká na novou konfiguraci,\n// zastaví zpracování – novější povel ho nepředběhne. Již provedené povely se neopakují, jen se potvrdí.\n// Výstupy: 1 zápis do DB, 2 nic k zápisu → rovnou potvrzení, 3 stáhnout konfiguraci\nconst gw = global.get(\"gw\");\nconst S = global.get(\"state\");\nconst now = Date.now();\nconst nowIso = new Date(now).toISOString();\n\nconst statements = [];\nconst serial = [];\nconst ackIds = [];\nlet needConfig = false;\nfor (const row of msg.payload ?? []) {\n  if (row.state === \"executed\") { ackIds.push(row.commandId); continue; }\n  const command = { type: row.type, payload: JSON.parse(row.payload) };\n  const result = gw.applyCommand({ config: S.config, game: S.game, command, nowIso });\n  if (result.needConfig) { needConfig = true; break; }\n  S.game = result.game;\n  if (result.resetNodes) {\n    S.leds = {};\n    serial.push({ topic: \"send\", payload: { t: \"reset\" } }); // node zhasne LED a vynuluje stav\n  }\n  for (const c of gw.ledCommandsFor(S, result.ledActions, now, statements)) serial.push({ topic: \"send\", payload: c });\n  statements.push(`UPDATE command_log SET state = 'executed', executedAt = ${gw.lit(now)} WHERE commandId = ${gw.lit(row.commandId)}`);\n  ackIds.push(row.commandId);\n  node.status({ fill: \"blue\", shape: \"dot\", text: `${command.type} → hra ${S.game?.state ?? \"–\"}` });\n}\nif (statements.length) statements.push(gw.kvUpsertSql(\"game\", S.game, now), gw.kvUpsertSql(\"leds\", S.leds, now));\n\nconst out = { ackIds, serial };\nreturn [\n  statements.length ? { ...out, topic: gw.transaction(statements) } : null,\n  statements.length ? null : out,\n  needConfig ? { payload: \"resetRoom\" } : null,\n];\n",
+    "outputs": 3,
+    "timeout": 0,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 1750,
+    "y": 620,
+    "wires": [
+      [
+        "lc_cmdexec"
+      ],
+      [
+        "fn_cmdafter"
+      ],
+      [
+        "fn_cfgreq"
+      ]
+    ]
+  },
+  {
+    "id": "lc_cmdexec",
+    "type": "link call",
+    "z": "tab_cloud",
+    "name": "DB transakce",
+    "links": [
+      "li_db_batch"
+    ],
+    "linkType": "static",
+    "timeout": "30",
+    "x": 1980,
+    "y": 620,
+    "wires": [
+      [
+        "fn_cmdafter"
+      ]
+    ]
+  },
+  {
+    "id": "fn_cmdafter",
+    "type": "function",
+    "z": "tab_cloud",
+    "name": "Po provedení",
+    "func": "// Po zápisu: pošle povely nodu (LED, reset) a potvrdí provedené povely v cloudu (gateway/ackCommands).\n// Výstupy: 1 povely pro node, 2 HTTP požadavek ackCommands\nconst gw = global.get(\"gw\");\nconst S = global.get(\"state\");\nconst ackIds = (msg.ackIds ?? []).slice(0, 100);\nif (!ackIds.length || !S.identity?.token) {\n  flow.set(\"busy_commands\", 0);\n  return [msg.serial ?? [], null];\n}\nconst request = gw.cloudRequest(env.get(\"CLOUD_URL\"), \"POST\", \"/gateway/ackCommands\", { commandIdList: ackIds }, S.identity.token);\nreturn [msg.serial ?? [], { ...request, ackIds }];\n",
+    "outputs": 2,
+    "timeout": 0,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 2210,
+    "y": 620,
+    "wires": [
+      [
+        "lo_cloud_cmd"
+      ],
+      [
+        "http_ack"
+      ]
+    ]
+  },
+  {
+    "id": "lo_cloud_cmd",
+    "type": "link out",
+    "z": "tab_cloud",
+    "name": "→ povel pro node",
+    "mode": "link",
+    "links": [
+      "li_cmd"
+    ],
+    "x": 2440,
+    "y": 620,
+    "wires": []
+  },
+  {
+    "id": "http_ack",
+    "type": "http request",
+    "z": "tab_cloud",
+    "name": "gateway/ackCommands",
+    "method": "use",
+    "ret": "obj",
+    "paytoqs": "ignore",
+    "url": "",
+    "tls": "",
+    "persist": false,
+    "proxy": "",
+    "insecureHTTPParser": false,
+    "authType": "",
+    "senderr": false,
+    "headers": [],
+    "x": 2440,
+    "y": 690,
+    "wires": [
+      [
+        "fn_ackres"
+      ]
+    ]
+  },
+  {
+    "id": "fn_ackres",
+    "type": "function",
+    "z": "tab_cloud",
+    "name": "Výsledek potvrzení",
+    "func": "// Výsledek potvrzení povelů. Při ztracené odpovědi se opakuje jen potvrzení, akce se neprovádí znovu.\n// Povel, který cloud už nezná (retence 7 dní), se vyřadí z opakování a zapíše se do diagnostiky.\nconst gw = global.get(\"gw\");\nconst S = global.get(\"state\");\nconst cls = gw.classifyResponse(msg.statusCode, msg.payload, msg.headers ?? {});\nconst now = Date.now();\nlet ids = [];\nlet note = null;\nif (cls.kind === \"ok\") {\n  ids = msg.payload.acknowledgedCommandIdList ?? [];\n} else if (cls.kind === \"dataError\" && cls.errorCodes.some((c) => c.endsWith(\"/gatewayCommandDoesNotExist\"))) {\n  const entry = Object.values(msg.payload.uuAppErrorMap).find((e) => e.type === \"error\");\n  ids = entry?.paramMap?.commandIdList ?? [];\n  note = \"unknownInCloud\";\n  gw.pushError(S, \"povely\", `cloud nezná povely: ${ids.join(\", \")}`);\n}\nif (!ids.length) {\n  flow.set(\"busy_commands\", 0);\n  return null;\n}\nmsg.topic = gw.transaction([\n  `UPDATE command_log SET state = 'confirmed', confirmedAt = ${gw.lit(now)}, lastError = ${gw.lit(note)} WHERE commandId IN (${gw.sqlList(ids)})`,\n]);\nreturn msg;\n",
+    "outputs": 1,
+    "timeout": 0,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 2670,
+    "y": 690,
+    "wires": [
+      [
+        "lc_ackres"
+      ]
+    ]
+  },
+  {
+    "id": "lc_ackres",
+    "type": "link call",
+    "z": "tab_cloud",
+    "name": "DB transakce",
+    "links": [
+      "li_db_batch"
+    ],
+    "linkType": "static",
+    "timeout": "30",
+    "x": 2900,
+    "y": 690,
+    "wires": [
+      [
+        "fn_cmddone"
+      ]
+    ]
+  },
+  {
+    "id": "fn_cmddone",
+    "type": "function",
+    "z": "tab_cloud",
+    "name": "Konec povelů",
+    "func": "// Konec kola povelů: uvolní zámek pro další vyzvednutí.\nflow.set(\"busy_commands\", 0);\nreturn null;\n",
+    "outputs": 0,
+    "timeout": 0,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 3130,
+    "y": 690,
+    "wires": []
+  },
+  {
+    "id": "li_register",
+    "type": "link in",
+    "z": "tab_cloud",
+    "name": "Registrace",
+    "links": [
+      "lo_start_register",
+      "lo_ui_register"
+    ],
+    "x": 140,
+    "y": 830,
+    "wires": [
+      [
+        "fn_regreq"
+      ]
+    ]
+  },
+  {
+    "id": "fn_regreq",
+    "type": "function",
+    "z": "tab_cloud",
+    "name": "Registrace",
+    "func": "// Registrace gateway jednorázovým kódem (dashboard nebo REGISTRATION_CODE). Kód se neukládá ani neloguje.\nconst gw = global.get(\"gw\");\nconst S = global.get(\"state\");\nconst code = String(msg.payload?.code ?? \"\").trim();\nif (!code) return null;\nif (!env.get(\"CLOUD_URL\")) {\n  S.registration = { ok: false, message: \"chybí CLOUD_URL\" };\n  return null;\n}\nif (S.identity?.token) {\n  S.registration = { ok: false, message: \"gateway už je registrovaná\" };\n  return null;\n}\nnode.status({ fill: \"blue\", shape: \"dot\", text: \"registruji…\" });\n// nová zpráva: z formuláře se dál nepřenáší nic jiného\nreturn gw.cloudRequest(env.get(\"CLOUD_URL\"), \"POST\", \"/gateway/register\", { registrationCode: code }, null);\n",
+    "outputs": 1,
+    "timeout": 0,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 370,
+    "y": 830,
+    "wires": [
+      [
+        "http_reg"
+      ]
+    ]
+  },
+  {
+    "id": "http_reg",
+    "type": "http request",
+    "z": "tab_cloud",
+    "name": "gateway/register",
+    "method": "use",
+    "ret": "obj",
+    "paytoqs": "ignore",
+    "url": "",
+    "tls": "",
+    "persist": false,
+    "proxy": "",
+    "insecureHTTPParser": false,
+    "authType": "",
+    "senderr": false,
+    "headers": [],
+    "x": 600,
+    "y": 830,
+    "wires": [
+      [
+        "fn_regres"
+      ]
+    ]
+  },
+  {
+    "id": "fn_regres",
+    "type": "function",
+    "z": "tab_cloud",
+    "name": "Uložit identitu",
+    "func": "// Výsledek registrace: token gateway trvale uloží do lokální databáze dřív, než začne běžná komunikace.\n// Token se nedostane do dashboardu, logů ani fronty dat.\nconst gw = global.get(\"gw\");\nconst S = global.get(\"state\");\nconst cls = gw.classifyResponse(msg.statusCode, msg.payload, msg.headers ?? {});\nif (cls.kind !== \"ok\") {\n  S.registration = {\n    ok: false,\n    message: cls.kind === \"auth\" ? \"neplatný, prošlý nebo už použitý kód – v aplikaci vytvořte novou registraci\" : `chyba: ${cls.reason ?? cls.kind}`,\n  };\n  node.status({ fill: \"red\", shape: \"ring\", text: \"registrace selhala\" });\n  return null;\n}\nconst p = msg.payload;\nS.identity = { gatewayId: p.gatewayId, roomId: p.roomId, token: p.accessToken };\nS.registration = { ok: true, message: `registrováno: gateway ${p.gatewayId}` };\nnode.status({ fill: \"green\", shape: \"dot\", text: `gateway ${p.gatewayId}` });\nreturn { topic: gw.transaction([gw.kvUpsertSql(\"identity\", S.identity, Date.now())]) };\n",
+    "outputs": 1,
+    "timeout": 0,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 830,
+    "y": 830,
+    "wires": [
+      [
+        "lc_regres"
+      ]
+    ]
+  },
+  {
+    "id": "lc_regres",
+    "type": "link call",
+    "z": "tab_cloud",
+    "name": "DB transakce",
+    "links": [
+      "li_db_batch"
+    ],
+    "linkType": "static",
+    "timeout": "30",
+    "x": 1060,
+    "y": 830,
+    "wires": [
+      [
+        "fn_afterreg"
+      ]
+    ]
+  },
+  {
+    "id": "fn_afterreg",
+    "type": "function",
+    "z": "tab_cloud",
+    "name": "Po registraci",
+    "func": "// Po uložení identity: stáhnout konfiguraci, poslat heartbeat a spustit odesílání nashromážděných dat.\n// Výstupy: 1 konfigurace, 2 heartbeat, 3 odesílače\nreturn [{ payload: \"registered\" }, { payload: \"registered\" }, [{ payload: \"event\" }, { payload: \"measurement\" }]];\n",
+    "outputs": 3,
+    "timeout": 0,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 1290,
+    "y": 830,
+    "wires": [
+      [
+        "fn_cfgreq"
+      ],
+      [
+        "fn_hb"
+      ],
+      [
+        "fn_sendsel"
+      ]
+    ]
+  },
+  {
+    "id": "inj_cleanup",
+    "type": "inject",
+    "z": "tab_cloud",
+    "name": "úklid à 1 h",
+    "props": [
+      {
+        "p": "payload"
+      }
+    ],
+    "repeat": "3600",
+    "crontab": "",
+    "once": true,
+    "onceDelay": 30,
+    "topic": "",
+    "payload": "",
+    "payloadType": "str",
+    "x": 140,
+    "y": 970,
+    "wires": [
+      [
+        "fn_cleanup"
+      ]
+    ]
+  },
+  {
+    "id": "fn_cleanup",
+    "type": "function",
+    "z": "tab_cloud",
+    "name": "Retence 24 h / 7 dní",
+    "func": "// Každou hodinu: retence. Cloudem potvrzená data po 24 h (diagnostika ze stejného herního dne),\n// potvrzené povely po 7 dnech (aby se povel neprovedl dvakrát). Neodeslaná data a karanténa zůstávají.\nconst gw = global.get(\"gw\");\nconst now = Date.now();\nmsg.topic = gw.transaction([\n  `DELETE FROM outbox WHERE state = 'confirmed' AND confirmedAt < ${gw.lit(now - 24 * 3600 * 1000)}`,\n  `DELETE FROM command_log WHERE state = 'confirmed' AND confirmedAt < ${gw.lit(now - 7 * 24 * 3600 * 1000)}`,\n]);\nreturn msg;\n",
+    "outputs": 1,
+    "timeout": 0,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 370,
+    "y": 970,
+    "wires": [
+      [
+        "lc_cleanup"
+      ]
+    ]
+  },
+  {
+    "id": "lc_cleanup",
+    "type": "link call",
+    "z": "tab_cloud",
+    "name": "DB transakce",
+    "links": [
+      "li_db_batch"
+    ],
+    "linkType": "static",
+    "timeout": "30",
+    "x": 600,
+    "y": 970,
+    "wires": []
+  },
+  {
+    "id": "fn_errlog_cloud",
+    "type": "function",
+    "z": "tab_cloud",
+    "name": "Zaznamenat chybu",
+    "func": "// Chyba z libovolného uzlu (catch) → seznam posledních chyb na dashboardu.\nconst gw = global.get(\"gw\");\nconst S = global.get(\"state\");\nconst source = msg.error?.source?.name || msg.error?.source?.type || \"flow\";\ngw.pushError(S, source, msg.error?.message ?? \"neznámá chyba\");\nreturn null;\n",
+    "outputs": 0,
+    "timeout": 0,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 370,
+    "y": 1110,
+    "wires": []
+  },
+  {
+    "id": "catch_cloud",
+    "type": "catch",
+    "z": "tab_cloud",
+    "name": "chyby záložky",
+    "scope": null,
+    "uncaught": false,
+    "x": 140,
+    "y": 1110,
+    "wires": [
+      [
+        "fn_errlog_cloud"
+      ]
+    ]
+  },
+  {
+    "id": "tab_ui",
+    "type": "tab",
+    "label": "5 Dashboard",
+    "disabled": false,
+    "info": "Provozní dashboard gateway: stav cloudu, nodů a fronty, registrace, ovládání."
+  },
+  {
+    "id": "inj_stats",
+    "type": "inject",
+    "z": "tab_ui",
+    "name": "každých 5 s",
+    "props": [
+      {
+        "p": "payload"
+      }
+    ],
+    "repeat": "5",
+    "crontab": "",
+    "once": true,
+    "onceDelay": 3,
+    "topic": "",
+    "payload": "",
+    "payloadType": "str",
+    "x": 140,
+    "y": 60,
+    "wires": [
+      [
+        "fn_statsq"
+      ]
+    ]
+  },
+  {
+    "id": "fn_statsq",
+    "type": "function",
+    "z": "tab_ui",
+    "name": "Statistika fronty",
+    "func": "// Každých 5 s: počty položek fronty podle stavu pro dashboard.\nmsg.topic = \"SELECT kind, state, count(*) AS n, min(createdAt) AS oldest FROM outbox GROUP BY kind, state\";\nmsg.payload = [];\nreturn msg;\n",
+    "outputs": 1,
+    "timeout": 0,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 370,
+    "y": 60,
+    "wires": [
+      [
+        "lc_stats"
+      ]
+    ]
+  },
+  {
+    "id": "lc_stats",
+    "type": "link call",
+    "z": "tab_ui",
+    "name": "DB dotaz",
+    "links": [
+      "li_db_query"
+    ],
+    "linkType": "static",
+    "timeout": "30",
+    "x": 600,
+    "y": 60,
+    "wires": [
+      [
+        "fn_dash"
+      ]
+    ]
+  },
+  {
+    "id": "fn_dash",
+    "type": "function",
+    "z": "tab_ui",
+    "name": "Stav pro dashboard",
+    "func": "// Texty pro dashboard. Výstupy: 1 cloud, 2 identita, 3 hra, 4 nody a teplota, 5 fronta, 6 poslední chyby\nconst gw = global.get(\"gw\");\nconst S = global.get(\"state\");\nconst rows = msg.payload ?? [];\nconst now = Date.now();\nconst count = (...states) => rows.filter((r) => states.includes(r.state)).reduce((sum, r) => sum + r.n, 0);\nconst waiting = rows.filter((r) => [\"pending\", \"waitingMapping\", \"inFlight\"].includes(r.state));\nconst oldest = waiting.length ? Math.min(...waiting.map((r) => r.oldest)) : null;\nconst age = (ms) => (ms < 60000 ? `${Math.round(ms / 1000)} s` : ms < 3600000 ? `${Math.round(ms / 60000)} min` : `${Math.round(ms / 3600000)} h`);\n\nconst cloud = !S.identity ? \"neregistrovaná\"\n  : `${S.cloud.online ? \"online\" : \"offline\"}${S.cloud.lastContactAt ? `, kontakt ${S.cloud.lastContactAt.slice(11, 19)} UTC` : \"\"}${S.cloud.alarm ? ` – ${S.cloud.alarm}` : \"\"}`;\nconst identity = S.identity ? `gateway ${S.identity.gatewayId}, místnost ${S.identity.roomId}` : (S.registration?.message ?? \"zadejte registrační kód z webové aplikace\");\nconst solved = S.game ? S.game.puzzles.filter((p) => p.state === \"solved\").length : 0;\nconst game = `${S.game ? `${S.game.state}, vyřešeno ${solved}/${S.game.puzzles.length}` : \"žádná hra\"} · revize konfigurace ${S.config?.scenario?.revision ?? \"–\"}`;\nconst nodes = Object.entries(S.nodes).map(([id, n]) => {\n  const online = now - n.lastSeen <= gw.NODE_OFFLINE_MS;\n  return `${id}: ${online ? \"online\" : \"offline\"}, zařízení ${n.devices.length}${n.badDevices.length ? `, vadné: ${n.badDevices.join(\", \")}` : \"\"}`;\n}).join(\" · \") || \"žádný node\";\nconst temperature = S.lastTemperature ? ` · teplota ${S.lastTemperature.value} °C` : \"\";\nconst queue = `čeká ${count(\"pending\", \"waitingMapping\", \"inFlight\")} (bez mapování ${count(\"waitingMapping\")})` +\n  `${oldest ? `, nejstarší ${age(now - oldest)}` : \"\"} · potvrzeno ${count(\"confirmed\")} · karanténa ${count(\"quarantined\")}`;\nconst errors = S.errors.slice(0, 5).map((e) => `${e.at.slice(11, 19)} ${e.source}: ${e.message}`).join(\" | \") || \"žádné\";\n\nreturn [{ payload: cloud }, { payload: identity }, { payload: game }, { payload: nodes + temperature }, { payload: queue }, { payload: errors }];\n",
+    "outputs": 6,
+    "timeout": 0,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 830,
+    "y": 60,
+    "wires": [
+      [
+        "ui_cloud"
+      ],
+      [
+        "ui_identity"
+      ],
+      [
+        "ui_game"
+      ],
+      [
+        "ui_nodes"
+      ],
+      [
+        "ui_queue"
+      ],
+      [
+        "ui_errors"
+      ]
+    ]
+  },
+  {
+    "id": "ui_cloud",
+    "type": "ui_text",
+    "z": "tab_ui",
+    "group": "ui_grp_state",
+    "order": 1,
+    "width": 0,
+    "height": 0,
+    "name": "Cloud",
+    "label": "Cloud",
+    "format": "{{msg.payload}}",
+    "layout": "row-left",
+    "className": "",
+    "style": false,
+    "x": 1060,
+    "y": 60,
+    "wires": []
+  },
+  {
+    "id": "ui_identity",
+    "type": "ui_text",
+    "z": "tab_ui",
+    "group": "ui_grp_state",
+    "order": 2,
+    "width": 0,
+    "height": 0,
+    "name": "Identita",
+    "label": "Identita",
+    "format": "{{msg.payload}}",
+    "layout": "row-left",
+    "className": "",
+    "style": false,
+    "x": 1060,
+    "y": 130,
+    "wires": []
+  },
+  {
+    "id": "ui_game",
+    "type": "ui_text",
+    "z": "tab_ui",
+    "group": "ui_grp_state",
+    "order": 3,
+    "width": 0,
+    "height": 0,
+    "name": "Hra",
+    "label": "Hra",
+    "format": "{{msg.payload}}",
+    "layout": "row-left",
+    "className": "",
+    "style": false,
+    "x": 1060,
+    "y": 200,
+    "wires": []
+  },
+  {
+    "id": "ui_nodes",
+    "type": "ui_text",
+    "z": "tab_ui",
+    "group": "ui_grp_state",
+    "order": 4,
+    "width": 0,
+    "height": 0,
+    "name": "Nody",
+    "label": "Nody",
+    "format": "{{msg.payload}}",
+    "layout": "row-left",
+    "className": "",
+    "style": false,
+    "x": 1060,
+    "y": 270,
+    "wires": []
+  },
+  {
+    "id": "ui_queue",
+    "type": "ui_text",
+    "z": "tab_ui",
+    "group": "ui_grp_state",
+    "order": 5,
+    "width": 0,
+    "height": 0,
+    "name": "Fronta dat",
+    "label": "Fronta dat",
+    "format": "{{msg.payload}}",
+    "layout": "row-left",
+    "className": "",
+    "style": false,
+    "x": 1060,
+    "y": 340,
+    "wires": []
+  },
+  {
+    "id": "ui_errors",
+    "type": "ui_text",
+    "z": "tab_ui",
+    "group": "ui_grp_state",
+    "order": 6,
+    "width": 0,
+    "height": 0,
+    "name": "Poslední chyby",
+    "label": "Poslední chyby",
+    "format": "{{msg.payload}}",
+    "layout": "row-left",
+    "className": "",
+    "style": false,
+    "x": 1060,
+    "y": 410,
+    "wires": []
+  },
+  {
+    "id": "ui_regform",
+    "type": "ui_form",
+    "z": "tab_ui",
+    "name": "Registrační kód",
+    "label": "",
+    "group": "ui_grp_reg",
+    "order": 1,
+    "width": 0,
+    "height": 0,
+    "options": [
+      {
+        "label": "Registrační kód z webové aplikace",
+        "value": "code",
+        "type": "text",
+        "required": true,
+        "rows": null
+      }
+    ],
+    "formValue": {
+      "code": ""
+    },
+    "payload": "",
+    "submit": "Registrovat",
+    "cancel": "Zrušit",
+    "topic": "topic",
+    "topicType": "msg",
+    "splitLayout": "",
+    "className": "",
+    "x": 140,
+    "y": 550,
+    "wires": [
+      [
+        "lo_ui_register"
+      ]
+    ]
+  },
+  {
+    "id": "lo_ui_register",
+    "type": "link out",
+    "z": "tab_ui",
+    "name": "→ registrace",
+    "mode": "link",
+    "links": [
+      "li_register"
+    ],
+    "x": 370,
+    "y": 550,
+    "wires": []
+  },
+  {
+    "id": "ui_btn_config",
+    "type": "ui_button",
+    "z": "tab_ui",
+    "name": "Obnovit konfiguraci",
+    "group": "ui_grp_ctl",
+    "order": 1,
+    "width": 0,
+    "height": 0,
+    "passthru": false,
+    "label": "Obnovit konfiguraci",
+    "tooltip": "",
+    "color": "",
+    "bgcolor": "",
+    "className": "",
+    "icon": "",
+    "payload": "",
+    "payloadType": "str",
+    "topic": "topic",
+    "topicType": "msg",
+    "x": 140,
+    "y": 690,
+    "wires": [
+      [
+        "lo_ui_config"
+      ]
+    ]
+  },
+  {
+    "id": "lo_ui_config",
+    "type": "link out",
+    "z": "tab_ui",
+    "name": "→ konfigurace",
+    "mode": "link",
+    "links": [
+      "li_config"
+    ],
+    "x": 370,
+    "y": 690,
+    "wires": []
+  },
+  {
+    "id": "ui_btn_quarantine",
+    "type": "ui_button",
+    "z": "tab_ui",
+    "name": "Vrátit karanténu k odeslání",
+    "group": "ui_grp_ctl",
+    "order": 2,
+    "width": 0,
+    "height": 0,
+    "passthru": false,
+    "label": "Vrátit karanténu k odeslání",
+    "tooltip": "",
+    "color": "",
+    "bgcolor": "",
+    "className": "",
+    "icon": "",
+    "payload": "",
+    "payloadType": "str",
+    "topic": "topic",
+    "topicType": "msg",
+    "x": 140,
+    "y": 760,
+    "wires": [
+      [
+        "fn_quarantine"
+      ]
+    ]
+  },
+  {
+    "id": "fn_quarantine",
+    "type": "function",
+    "z": "tab_ui",
+    "name": "Karanténa zpět",
+    "func": "// Tlačítko na dashboardu: po odstranění příčiny vrátí záznamy z karantény k odeslání (obsah se nemění).\nconst gw = global.get(\"gw\");\nmsg.topic = gw.transaction([\"UPDATE outbox SET state = 'pending', nextAttemptAt = 0, attempts = 0 WHERE state = 'quarantined'\"]);\nreturn msg;\n",
+    "outputs": 1,
+    "timeout": 0,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 370,
+    "y": 760,
+    "wires": [
+      [
+        "lc_quarantine"
+      ]
+    ]
+  },
+  {
+    "id": "lc_quarantine",
+    "type": "link call",
+    "z": "tab_ui",
+    "name": "DB transakce",
+    "links": [
+      "li_db_batch"
+    ],
+    "linkType": "static",
+    "timeout": "30",
+    "x": 600,
+    "y": 760,
+    "wires": []
+  },
+  {
+    "id": "fn_errlog_ui",
+    "type": "function",
+    "z": "tab_ui",
+    "name": "Zaznamenat chybu",
+    "func": "// Chyba z libovolného uzlu (catch) → seznam posledních chyb na dashboardu.\nconst gw = global.get(\"gw\");\nconst S = global.get(\"state\");\nconst source = msg.error?.source?.name || msg.error?.source?.type || \"flow\";\ngw.pushError(S, source, msg.error?.message ?? \"neznámá chyba\");\nreturn null;\n",
+    "outputs": 0,
+    "timeout": 0,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 370,
+    "y": 900,
+    "wires": []
+  },
+  {
+    "id": "catch_ui",
+    "type": "catch",
+    "z": "tab_ui",
+    "name": "chyby záložky",
+    "scope": null,
+    "uncaught": false,
+    "x": 140,
+    "y": 900,
+    "wires": [
+      [
+        "fn_errlog_ui"
+      ]
+    ]
+  },
+  {
+    "id": "tab_sim",
+    "type": "tab",
+    "label": "6 Simulátor (vývoj)",
+    "disabled": false,
+    "info": "Ruční vložení řádků ve formátu protokolu, jako by přišly z Arduina. Na skutečném HW se nepoužívá."
+  },
+  {
+    "id": "sim_hello",
+    "type": "inject",
+    "z": "tab_sim",
+    "name": "hello",
+    "props": [
+      {
+        "p": "payload"
+      }
+    ],
+    "repeat": "",
+    "crontab": "",
+    "once": false,
+    "onceDelay": 0.1,
+    "topic": "",
+    "payload": "{\"t\":\"hello\",\"node\":\"node1\",\"fw\":\"1.0.0\",\"devices\":[{\"id\":\"node1.btn1\",\"type\":\"button\"},{\"id\":\"node1.btn2\",\"type\":\"button\"},{\"id\":\"node1.btn3\",\"type\":\"button\"},{\"id\":\"node1.acc1\",\"type\":\"accelerometer\"},{\"id\":\"node1.temp1\",\"type\":\"thermometer\"},{\"id\":\"node1.led1\",\"type\":\"led\"},{\"id\":\"node1.led2\",\"type\":\"led\"}]}",
+    "payloadType": "str",
+    "x": 140,
+    "y": 60,
+    "wires": [
+      [
+        "lo_sim"
+      ]
+    ]
+  },
+  {
+    "id": "sim_hb",
+    "type": "inject",
+    "z": "tab_sim",
+    "name": "hb",
+    "props": [
+      {
+        "p": "payload"
+      }
+    ],
+    "repeat": "",
+    "crontab": "",
+    "once": false,
+    "onceDelay": 0.1,
+    "topic": "",
+    "payload": "{\"t\":\"hb\",\"node\":\"node1\",\"up\":60,\"seq\":1}",
+    "payloadType": "str",
+    "x": 140,
+    "y": 130,
+    "wires": [
+      [
+        "lo_sim"
+      ]
+    ]
+  },
+  {
+    "id": "sim_press",
+    "type": "inject",
+    "z": "tab_sim",
+    "name": "stisk btn1",
+    "props": [
+      {
+        "p": "payload"
+      }
+    ],
+    "repeat": "",
+    "crontab": "",
+    "once": false,
+    "onceDelay": 0.1,
+    "topic": "",
+    "payload": "{\"t\":\"ev\",\"id\":\"node1.btn1\",\"e\":\"press\",\"seq\":2}",
+    "payloadType": "str",
+    "x": 140,
+    "y": 200,
+    "wires": [
+      [
+        "lo_sim"
+      ]
+    ]
+  },
+  {
+    "id": "sim_tilt",
+    "type": "inject",
+    "z": "tab_sim",
+    "name": "náklon 52°",
+    "props": [
+      {
+        "p": "payload"
+      }
+    ],
+    "repeat": "",
+    "crontab": "",
+    "once": false,
+    "onceDelay": 0.1,
+    "topic": "",
+    "payload": "{\"t\":\"ev\",\"id\":\"node1.acc1\",\"e\":\"tilt\",\"v\":52,\"seq\":3}",
+    "payloadType": "str",
+    "x": 140,
+    "y": 270,
+    "wires": [
+      [
+        "lo_sim"
+      ]
+    ]
+  },
+  {
+    "id": "sim_move",
+    "type": "inject",
+    "z": "tab_sim",
+    "name": "pohyb",
+    "props": [
+      {
+        "p": "payload"
+      }
+    ],
+    "repeat": "",
+    "crontab": "",
+    "once": false,
+    "onceDelay": 0.1,
+    "topic": "",
+    "payload": "{\"t\":\"ev\",\"id\":\"node1.acc1\",\"e\":\"move\",\"seq\":4}",
+    "payloadType": "str",
+    "x": 140,
+    "y": 340,
+    "wires": [
+      [
+        "lo_sim"
+      ]
+    ]
+  },
+  {
+    "id": "sim_temp",
+    "type": "inject",
+    "z": "tab_sim",
+    "name": "teplota 23 °C",
+    "props": [
+      {
+        "p": "payload"
+      }
+    ],
+    "repeat": "",
+    "crontab": "",
+    "once": false,
+    "onceDelay": 0.1,
+    "topic": "",
+    "payload": "{\"t\":\"m\",\"id\":\"node1.temp1\",\"v\":23,\"seq\":5}",
+    "payloadType": "str",
+    "x": 140,
+    "y": 410,
+    "wires": [
+      [
+        "lo_sim"
+      ]
+    ]
+  },
+  {
+    "id": "sim_err",
+    "type": "inject",
+    "z": "tab_sim",
+    "name": "chyba DHT11",
+    "props": [
+      {
+        "p": "payload"
+      }
+    ],
+    "repeat": "",
+    "crontab": "",
+    "once": false,
+    "onceDelay": 0.1,
+    "topic": "",
+    "payload": "{\"t\":\"err\",\"id\":\"node1.temp1\",\"code\":\"sensorNotResponding\",\"seq\":6}",
+    "payloadType": "str",
+    "x": 140,
+    "y": 480,
+    "wires": [
+      [
+        "lo_sim"
+      ]
+    ]
+  },
+  {
+    "id": "sim_hb_auto",
+    "type": "inject",
+    "z": "tab_sim",
+    "name": "hb každých 5 s (zapnout pro delší test)",
+    "props": [
+      {
+        "p": "payload"
+      }
+    ],
+    "repeat": "5",
+    "crontab": "",
+    "once": false,
+    "onceDelay": 0.1,
+    "topic": "",
+    "payload": "{\"t\":\"hb\",\"node\":\"node1\",\"up\":120}",
+    "payloadType": "str",
+    "d": true,
+    "x": 140,
+    "y": 550,
+    "wires": [
+      [
+        "lo_sim"
+      ]
+    ]
+  },
+  {
+    "id": "lo_sim",
+    "type": "link out",
+    "z": "tab_sim",
+    "name": "→ příjem řádku",
+    "mode": "link",
+    "links": [
+      "li_sim"
+    ],
+    "x": 370,
+    "y": 270,
+    "wires": []
+  }
+]
