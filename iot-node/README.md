@@ -10,14 +10,37 @@ Firmware pro Arduino Mega 2560 (Arduino C++).
 
 Zapojení a návrh: `docs/03-application-model/iot-hardware.md`, `iot-node.md`, `iot-protocol.md`.
 
-## Vývoj
-- Arduino IDE, nebo PlatformIO (rozšíření VS Code).
-- Firmware se nahrává přes USB; stejný kabel slouží ke komunikaci s gateway (sériová linka).
+## Soubory
+- `escape-node/escape-node.ino` – firmware (hlavní smyčka, senzory, povely),
+- `escape-node/config.h` – piny, `NODE_ID`, časování a prahy.
 
-## Co bude node posílat a přijímat (návrh)
-- `button` – stisk tlačítka (okamžitě),
-- `motion` – naklonění / pohyb podle akcelerometru (okamžitě, při překročení prahu),
-- `temperature` – měření teploty (každých ~10 s; downsampling řeší gateway),
-- povely z gateway – např. rozsvícení / zhasnutí LED.
+## Knihovny
+ArduinoJson 7.x, DHT sensor library (Adafruit) 1.4.x, Adafruit Unified Sensor. V Arduino IDE: *Nástroje → Spravovat knihovny*.
 
-Formát zpráv bude upřesněn v milníku „Navrženo technické řešení IoT části“ (týden 7).
+## Překlad a nahrání
+
+Arduino IDE: otevřít `escape-node/escape-node.ino`, deska **Arduino Mega or Mega 2560**, port Arduina, *Nahrát*.
+
+Nebo z příkazové řádky (`arduino-cli`):
+
+```powershell
+arduino-cli lib install "ArduinoJson" "DHT sensor library" "Adafruit Unified Sensor"
+arduino-cli compile --fqbn arduino:avr:mega iot-node/escape-node
+arduino-cli upload  --fqbn arduino:avr:mega -p COM3 iot-node/escape-node   # port podle Správce zařízení
+```
+
+## Test bez gateway
+
+Serial Monitor **115 200 Bd**, konec řádku **Newline**:
+
+1. Po otevření přijde `hello` se 7 zařízeními (`btn1–3`, `acc1`, `temp1`, `led1–2`), pak každých 5 s `hb`.
+2. Tlačítka → `{"t":"ev","id":"node1.btn1","e":"press",…}`; náklon → `tilt`; zatřesení → `move`; každých 10 s → `m`.
+3. Povely (vložit a odeslat):
+   - `{"t":"led","cid":"1","id":"node1.led1","s":"on"}` – zelená svítí, odpověď `ack ok:true`,
+   - `{"t":"led","cid":"2","id":"node1.led2","s":"blink"}` – červená bliká,
+   - `{"t":"reset","cid":"3"}` – obě zhasnou,
+   - `{"t":"who","cid":"4"}` – `ack` a znovu `hello`,
+   - `{"t":"led","cid":"5","id":"node1.led9","s":"on"}` – `ack ok:false, err:"unknownDevice"`.
+4. Odpojený DATA vodič DHT11 → `err sensorNotResponding`, po 3 pokusech nové `hello` bez `temp1`.
+
+Formát zpráv: `docs/03-application-model/iot-protocol.md`.

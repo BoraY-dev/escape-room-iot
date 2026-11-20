@@ -52,7 +52,7 @@ Akcelerometr se čte **přímo přes registry** MPU-6050, bez další knihovny: 
 
 ## 3. Struktura programu
 
-Program **nikde nečeká** (`delay()` se nepoužívá). Hlavní smyčka `loop()` běží stále dokola a každá úloha
+Hlavní smyčka **nikde nečeká** (`delay()` se v ní nepoužívá). Smyčka `loop()` běží stále dokola a každá úloha
 si podle `millis()` hlídá, jestli už nastal její čas. Tlačítko tak zareaguje do pár milisekund,
 i když se zrovna měří teplota.
 
@@ -105,10 +105,14 @@ Odčítání `now - last…` funguje správně i po přetečení `millis()` (asi
 
 1. `Serial.begin(115200)`, `Wire.begin()`, `dht.begin()`, tlačítka `INPUT_PULLUP`, LED `OUTPUT` a zhasnuté.
 2. Inicializace GY-521: zápis `0x00` do registru `PWR_MGMT_1` (`0x6B`) čip probudí,
-   zápis `0x00` do `ACCEL_CONFIG` (`0x1C`) nastaví rozsah ±2 g. Kontrola: registr `WHO_AM_I` (`0x75`) vrací `0x68`.
+   zápis `0x00` do `ACCEL_CONFIG` (`0x1C`) nastaví rozsah ±2 g. Kontrola: registr `WHO_AM_I` (`0x75`) musí odpovědět.
+   Originální MPU-6050 vrací `0x68`, klony na levných modulech GY-521 (MPU-6500 apod.) jinou hodnotu se stejnými
+   registry zrychlení; za chybu se proto bere jen žádná odpověď (`0x00`, `0xFF`). Sběrnice I2C má časový limit 3 ms
+   (`Wire.setWireTimeout`), aby odpojený modul nezasekl program.
 3. Úvodní měření náklonu, aby první `tilt` odpovídal skutečné poloze.
 4. Zapnutí watchdogu na 2 s (`wdt_enable(WDTO_2S)`).
-5. Úvodní čtení DHT11; když se nepovede, `node1.temp1` se do `hello` nezařadí.
+5. Po 1 s (DHT11 se po zapnutí napájení ustaluje; jediné čekání ve firmwaru, ještě před zapnutím watchdogu)
+   úvodní čtení DHT11; když se nepovede, `node1.temp1` se do `hello` nezařadí.
 6. Odeslání `hello` se seznamem **funkčních** zařízení. Když GY-521 neodpovídá, `node1.acc1` v seznamu chybí
    a node pošle `err` se `sensorNotResponding`.
 
@@ -220,9 +224,9 @@ Gateway pozná změnu dostupnosti zařízení z nového `hello` a v `gateway/hea
 
 ## 9. Paměť
 
-Arduino Mega má **8 KB RAM**. Firmware potřebuje řádově stovky bajtů: buffer povelů 128 B, dokument ArduinoJson
-pro jednu zprávu asi 256 B, stav senzorů desítky bajtů. Pevné texty jsou v paměti programu (makro `F()`),
-aby nezabíraly RAM.
+Arduino Mega má **8 KB RAM** a 248 KB paměti programu. Přeložený firmware (`iot-node/escape-node`) zabírá
+asi 24 KB programu a **940 B** globálních proměnných (buffer povelů 128 B, stav senzorů, knihovny).
+Dokument ArduinoJson pro jednu zprávu (nejdelší `hello` asi 310 B) se vytváří dočasně, takže zbývá přes 7 KB rezervy.
 
 ## 10. Test bez gateway
 
