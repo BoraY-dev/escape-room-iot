@@ -15,7 +15,7 @@ Se skutečnou databází (MongoDB Atlas):
 
 ```powershell
 copy .env.example .env      # doplnit MONGODB_URI a JWT_SECRET
-$env:USER_PASSWORD = "<heslo>"; npm run create-user -- --venue "Název provozovny" --email jan@example.com --name "Jan Novák"
+$env:USER_PASSWORD = "<heslo>"; node scripts/create-user.js --venue "Název provozovny" --email jan@example.com --name "Jan Novák"
 npm run dev                 # http://localhost:3000/health
 ```
 

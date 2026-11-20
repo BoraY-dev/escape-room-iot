@@ -1,0 +1,25 @@
+# Render Blueprint – nasazení backendu (https://render.com/docs/blueprint-spec)
+# Render podle tohoto souboru založí webovou službu z větve main a při každém pushi ji nasadí znovu.
+services:
+  - type: web
+    name: escape-room-iot-api
+    runtime: node
+    region: frankfurt            # stejný region jako MongoDB Atlas
+    plan: free
+    rootDir: server
+    branch: main
+    buildCommand: npm ci --omit=dev   # bez testovacích balíčků (mongodb-memory-server)
+    startCommand: npm start
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NODE_VERSION
+        value: "22"
+      - key: JWT_EXPIRES_IN
+        value: 12h
+      - key: JWT_SECRET
+        generateValue: true      # náhodný tajný klíč vygeneruje Render, nikdo ho nemusí znát
+      - key: MONGODB_URI
+        sync: false              # zadává se ručně v Renderu, do repozitáře nepatří

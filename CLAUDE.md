@@ -105,8 +105,11 @@ Aktéři: **Provozovatel**, **Game master**, **Hráč** (jen fyzicky ovládá p�
 | Retence v cloudu | `event` a `measurement` 90 dní (TTL), doručené `gatewayCommand` 7 dní, výsledky her trvale | Atlas free tier má 512 MB; výsledky zůstávají v `game` |
 | Struktura backendu | Společný obal `registerCommand` místo ručních routes (ověření → validace dtoIn → abl → `uuAppErrorMap`), vrstvy `abl/` a `dao/` | Commandy obsahují jen vlastní logiku; odpovídá DAO Method Listu |
 | Validace dtoIn | Vlastní malý validátor se stejným zápisem jako Command List (`shape`, `string(1,100)`, `id()` …) | Kód se čte stejně jako návrh, vrací `invalidValueKeyMap` i `unsupportedKeys` bez další knihovny |
-| Přihlášení | `user/login` (bcrypt + JWT 12 h), první provozovnu a uživatele zakládá `npm run create-user` | Otevřený bod 1 z Application Profiles; správa uživatelů z webu je rozšíření |
+| Přihlášení | `user/login` (bcrypt + JWT 12 h), první provozovnu a uživatele zakládá `node scripts/create-user.js` (přes `npm run … --` v PowerShellu parametry nedojdou) | Otevřený bod 1 z Application Profiles; správa uživatelů z webu je rozšíření |
 | Testy a lokální běh | `node --test` + supertest + mongodb-memory-server (replica set kvůli transakcím); `npm run dev:memory` bez Atlasu | Testy nepotřebují cloud; transakce `sendEvents` fungují stejně jako v Atlasu |
+| Databáze gateway | Uzel `node-red-node-sqlite` (zadání: „rozšíření Node-RED pro databázi“); všechny zápisy přes jediné „DB dotaz“ / „DB transakce“ (link call), vícetabulkové změny jako jedna dávka `BEGIN…COMMIT`, při chybě ROLLBACK | Varianta B zvolená 19. 11.; odpovídá zadání, zápisy se neprokládají |
+| Zdroj flow | `gateway/flows.json` se generuje (`npm run build`) z `src/functions/*.js` a knihovny `src/lib/gw.js`; knihovna se při startu vloží do globálního kontextu | Kód čitelný a revidovatelný v gitu, výpočty testované (`npm test`) |
+| Token gateway | V lokální SQLite (`kv`), soubor jen pro účet služby (`UMask=0077`); vlastní credentials uzel je rozšíření | Základní implementace; token se nedostane do dashboardu, logů ani fronty |
 
 ## Milníky
 
@@ -119,7 +122,7 @@ Aktéři: **Provozovatel**, **Game master**, **Hráč** (jen fyzicky ovládá p�
 | 6 | Návrh backendu (endpointy, datový model) | 2 | ✅ v uuMK (PR #1) |
 | 7 | Navrženo technické řešení IoT části | 2 | ✅ (PR #2) |
 | 7 | Základní implementace backendu | 2 | ✅ (`server/`, testy `npm test`) |
-| 8 | Základní implementace IoT části (node, gateway) | 2 | ⬜ |
+| 8 | Základní implementace IoT části (node, gateway) | 2 | 🔶 firmware i Node-RED flow hotové a otestované bez HW; čeká test na RPi s Arduinem |
 | 9 | Návrh frontendu (routy, komponenty) | **4** | ⬜ |
 | 10 | Základní implementace frontendu | 2 | ⬜ |
 | 12 | Nasazení aplikace v cloudu | 2 | ⬜ |

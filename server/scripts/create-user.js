@@ -1,9 +1,9 @@
 // Založení uživatele webové aplikace (application-profiles.md, otevřený bod 1).
 //
 // První provozovna a provozovatel:
-//   $env:USER_PASSWORD = "<heslo>"; npm run create-user -- --venue "Únikovky Praha" --email jan@example.com --name "Jan Novák"
+//   $env:USER_PASSWORD = "<heslo>"; node scripts/create-user.js --venue "Únikovky Praha" --email jan@example.com --name "Jan Novák"
 // Game master do existující provozovny:
-//   $env:USER_PASSWORD = "<heslo>"; npm run create-user -- --venue-id <venueId> --role gameMaster --email eva@example.com --name "Eva"
+//   $env:USER_PASSWORD = "<heslo>"; node scripts/create-user.js --venue-id <venueId> --role gameMaster --email eva@example.com --name "Eva"
 //
 // Heslo se bere z proměnné prostředí USER_PASSWORD, aby nezůstalo v historii příkazů ani ve výpisu procesů.
 import { parseArgs } from "node:util";

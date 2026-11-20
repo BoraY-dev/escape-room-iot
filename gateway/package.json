@@ -1,0 +1,13 @@
+{
+  "name": "escape-room-iot-gateway",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Node-RED gateway: Arduino (USB) ↔ cloud (HTTPS)",
+  "scripts": {
+    "build": "node scripts/build-flow.js",
+    "test": "node --test \"test/**/*.test.js\""
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
