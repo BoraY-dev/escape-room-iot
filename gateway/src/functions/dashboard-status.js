@@ -1,4 +1,5 @@
-// Texty pro dashboard. Výstupy: 1 cloud, 2 identita, 3 hra, 4 nody a teplota, 5 fronta, 6 poslední chyby
+// Texty pro dashboard. Výstupy: 1 cloud, 2 identita, 3 hra, 4 nody a teplota, 5 fronta, 6 poslední chyby,
+// 7 rozšíření
 const gw = global.get("gw");
 const S = global.get("state");
 const rows = msg.payload ?? [];
@@ -22,4 +23,10 @@ const queue = `čeká ${count("pending", "waitingMapping", "inFlight")} (bez map
   `${oldest ? `, nejstarší ${age(now - oldest)}` : ""} · potvrzeno ${count("confirmed")} · karanténa ${count("quarantined")}`;
 const errors = S.errors.slice(0, 5).map((e) => `${e.at.slice(11, 19)} ${e.source}: ${e.message}`).join(" | ") || "žádné";
 
-return [{ payload: cloud }, { payload: identity }, { payload: game }, { payload: nodes + temperature }, { payload: queue }, { payload: errors }];
+// Rozšíření: poslední vstup klávesnice a enkodéru, aktuální text LCD
+const inputLabel = { key: "klávesa", code: "kód", turn: "poloha" };
+const inputs = Object.entries(S.inputs ?? {}).map(([hwId, i]) => `${hwId}: ${inputLabel[i.e] ?? i.e} ${i.v} (${i.at.slice(11, 19)})`);
+const displays = Object.entries(S.displays ?? {}).map(([hwId, lines]) => `${hwId}: „${lines[0]}“ / „${lines[1]}“`);
+const extensions = [...inputs, ...displays].join(" · ") || "žádná data (node bez rozšíření?)";
+
+return [{ payload: cloud }, { payload: identity }, { payload: game }, { payload: nodes + temperature }, { payload: queue }, { payload: errors }, { payload: extensions }];

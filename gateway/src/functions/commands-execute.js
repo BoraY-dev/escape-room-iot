@@ -18,14 +18,17 @@ for (const row of msg.payload ?? []) {
   S.game = result.game;
   if (result.resetNodes) {
     S.leds = {};
-    serial.push({ topic: "send", payload: { t: "reset" } }); // node zhasne LED a vynuluje stav
+    S.displays = {};
+    serial.push({ topic: "send", payload: { t: "reset" } }); // node zhasne LED, smaže LCD a vynuluje stav
   }
-  for (const c of gw.ledCommandsFor(S, result.ledActions, now, statements)) serial.push({ topic: "send", payload: c });
+  for (const c of gw.outputCommandsFor(S, result.outputActions, now, statements)) serial.push({ topic: "send", payload: c });
   statements.push(`UPDATE command_log SET state = 'executed', executedAt = ${gw.lit(now)} WHERE commandId = ${gw.lit(row.commandId)}`);
   ackIds.push(row.commandId);
   node.status({ fill: "blue", shape: "dot", text: `${command.type} → hra ${S.game?.state ?? "–"}` });
 }
-if (statements.length) statements.push(gw.kvUpsertSql("game", S.game, now), gw.kvUpsertSql("leds", S.leds, now));
+if (statements.length) {
+  statements.push(gw.kvUpsertSql("game", S.game, now), gw.kvUpsertSql("leds", S.leds, now), gw.kvUpsertSql("displays", S.displays ?? {}, now));
+}
 
 const out = { ackIds, serial };
 return [

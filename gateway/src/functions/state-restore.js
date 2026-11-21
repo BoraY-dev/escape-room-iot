@@ -9,6 +9,7 @@ for (const row of msg.payload ?? []) {
     else if (row.key === "deviceMap") S.deviceMap = value;
     else if (row.key === "game") S.game = value;
     else if (row.key === "leds") S.leds = value;
+    else if (row.key === "displays") S.displays = value;
   } catch (e) {
     node.warn(`kv ${row.key}: ${e.message}`);
   }

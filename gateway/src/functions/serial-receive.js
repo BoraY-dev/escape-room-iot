@@ -1,5 +1,5 @@
 // Příjem řádku z Arduina: validace podle protokolu, registr nodů (hello, hb, err) a rozdělení zpráv.
-// Výstupy: 1 událost (ev), 2 vzorek teploty (m), 3 potvrzení povelu (ack), 4 povely pro node (obnova LED)
+// Výstupy: 1 událost (ev), 2 vzorek teploty (m), 3 potvrzení povelu (ack), 4 povely pro node (obnova LED a LCD)
 const gw = global.get("gw");
 const S = global.get("state");
 const now = Date.now();
@@ -26,22 +26,20 @@ if (Number.isInteger(m.seq)) {
   info.lastSeq = m.seq;
 }
 
-// požadované stavy LED nodu – povely jsou absolutní, opakované poslání nic nepokazí
-const reapplyLeds = () => Object.entries(S.leds)
-  .filter(([hwId]) => gw.nodeOfHwId(hwId) === nodeId)
-  .map(([hwId, state]) => ({ topic: "send", payload: { t: "led", id: hwId, s: state } }));
+// Povely nastavují absolutní stav, opakované odeslání je bezpečné.
+const reapplyOutputs = () => gw.nodeRestoreCommands(S, nodeId).map((c) => ({ topic: "send", payload: c }));
 
 node.status({ fill: "green", shape: "dot", text: `${nodeId}: ${m.t}` });
 
 switch (m.t) {
   case "hello":
-    // seznam funkčních zařízení; obnovit LED (node mohl restartovat)
+    // hello posílá node po startu, výstupy je proto potřeba obnovit
     Object.assign(info, { devices: m.devices, badDevices: [], fw: m.fw, lastSeq: null });
-    return [null, null, null, reapplyLeds()];
+    return [null, null, null, reapplyOutputs()];
   case "hb": {
     const restarted = info.up !== null && m.up < info.up; // uptime kleslo = restart nodu
     info.up = m.up;
-    return [null, null, null, restarted || wasOffline ? reapplyLeds() : null];
+    return [null, null, null, restarted || wasOffline ? reapplyOutputs() : null];
   }
   case "err":
     // vadný senzor se vyřadí z heartbeat, dokud nepřijdou platná data nebo nové hello

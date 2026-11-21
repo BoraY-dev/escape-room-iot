@@ -331,6 +331,31 @@ Start, pause a reset hry zajišťují cloudové commandy.
 
 ---
 
+## 10a. Rozšíření: klávesnice, enkodér, LCD (implementováno 21. 11. 2026)
+
+Gateway přijímá node s firmwarem 1.1.0 a `ENABLE_EXTENSIONS = 1` (zprávy v `iot-protocol.md` kap. 9).
+Cloud typy `keypad`, `encoder`, `display` zatím nezná, proto gateway rozlišuje dva seznamy typů (`gw.js`):
+
+| Seznam | Obsah | Použití |
+|---|---|---|
+| `DEVICE_TYPES` | MVP + `keypad`, `encoder`, `display` | kontrola `hello` od nodu |
+| `CLOUD_DEVICE_TYPES` | jen MVP | `gateway/heartbeat` a fronta událostí; ostatní zařízení jsou **jen lokální** |
+
+Události lokálních zařízení (`key`, `code`, `turn`) se **neukládají do fronty**: cloud by je odmítl a bez mapování
+by čekaly neomezeně (retence neodeslaných dat). Gateway si pamatuje poslední hodnotu pro dashboard a vyhodnotí
+nad nimi pravidla. Až cloud nové typy doplní, stačí je přidat do `CLOUD_DEVICE_TYPES`.
+
+**Pravidla.** Gateway umí podmínku `eq` (přesná shoda: kód `"1234"`, poloha `7`) a akci
+`showText` `{ type, deviceId, line1, line2 }`, která pošle povel `lcd`. Text se převede na ASCII bez diakritiky
+(nejvýš 16 znaků na řádek). Požadovaný text LCD se ukládá do `kv` (`displays`) a po restartu nodu se obnoví
+stejně jako LED; `resetRoom` displej smaže.
+
+**Dashboard.** Řádek *Rozšíření* ukazuje poslední kód, polohu enkodéru a text LCD. Skupina *Displej nodu (LCD)*
+má formulář pro ruční text na displeji (test a ukázka, než pravidla `showText` dodá cloud; ruční text se drží
+jen v paměti).
+
+---
+
 ## 11. Autostart přes systemd
 
 Použije se `nodered.service` z instalace Node-RED pro Raspberry Pi OS, nikoliv druhá paralelní
