@@ -13,7 +13,8 @@ Dělá jen čtyři věci a o hře nic neví:
 3. vykonává povely z gateway (2 LED, reset),
 4. hlídá chyby senzorů a sám se zotaví ze zaseknutí (watchdog).
 
-Klávesnici, enkodér a LCD (zapojené pro 2. fázi, `iot-hardware.md` kap. 6) firmware MVP nepoužívá; jejich piny nechává jako vstupy.
+Klávesnici, enkodér a LCD (2. fáze, `iot-hardware.md` kap. 6) firmware obsluhuje jen s přepínačem
+`ENABLE_EXTENSIONS = 1` (kap. 11); ve výchozím nastavení je nepoužívá a jejich piny nechává jako vstupy.
 
 | Knihovna | Účel |
 |---|---|
@@ -29,7 +30,8 @@ Akcelerometr se čte **přímo přes registry** MPU-6050, bez další knihovny: 
 | Konstanta | Hodnota | Význam |
 |---|---|---|
 | `NODE_ID` | `"node1"` | identifikace nodu, prefix všech `hwId` |
-| `FW_VERSION` | `"1.0.0"` | verze firmwaru v `hello` |
+| `FW_VERSION` | `"1.1.0"` | verze firmwaru v `hello` |
+| `ENABLE_EXTENSIONS` | `0` | `1` = obsluha klávesnice, enkodéru a LCD (kap. 11) |
 | `PIN_BUTTONS` | `{2, 3, 4}` | tlačítka 1–3 |
 | `PIN_LEDS` | `{22, 23}` | LED zelená, červená |
 | `PIN_DHT` | `5` | DHT11 |
@@ -237,3 +239,30 @@ Firmware jde vyzkoušet přímo v sériovém monitoru Arduino IDE (115 200 Bd, k
 3. Odeslání `{"t":"led","cid":"1","id":"node1.led1","s":"on"}` rozsvítí zelenou LED a vrátí `ack`;
    `{"t":"led","cid":"2","id":"node1.led2","s":"blink"}` rozbliká červenou.
 4. Odeslání `{"t":"who","cid":"3"}` vrátí `ack` a `hello`.
+
+Serial Monitor musí mít nastavenou **stejnou rychlost jako firmware (115 200 Bd)**; jinak ukazuje nesmyslné znaky.
+
+## 11. Rozšíření: klávesnice, enkodér, LCD (`ENABLE_EXTENSIONS`)
+
+S `ENABLE_EXTENSIONS = 1` firmware 1.1.0 obsluhuje zařízení 2. fáze; zprávy popisuje `iot-protocol.md` kap. 9.
+Kód rozšíření je v `#if ENABLE_EXTENSIONS`, takže s `0` je přeložený program stejný jako v MVP
+(23,9 KB programu, 944 B RAM); s `1` má 26,6 KB a 1 118 B RAM.
+
+| Část | Jak funguje |
+|---|---|
+| Klávesnice 4x4 | maticové skenování à 5 ms: jeden řádek se stáhne na LOW, sloupce s pull-upem ukážou stisk; ostatní řádky jsou vstupy, aby dvě stisknuté klávesy nezkratovaly výstupy. Zákmity 30 ms. Kód se skládá v nodu (`*` maže, `#` odesílá, nejvýš 8 znaků) |
+| Enkodér KY-040 | kvadraturní dekodér s tabulkou přechodů čtený v **každém průchodu** `loop()` (D6–D8 nemají přerušení); neplatný přechod (zákmit) se ignoruje, 4 přechody = 1 zarážka. Poloha 0–19 dokola, směr nastavuje `ENC_REVERSE`. Zprávy nejvýš à 100 ms |
+| LCD 1602 | knihovna `LiquidCrystal` (součást Arduina), 4bitový režim. Řádek se přepisuje doplněný mezerami místo `lcd.clear()` (2 ms). Znaky mimo ASCII → `?` |
+| DHT11 a enkodér | čtení DHT11 blokuje ~25 ms a kroky enkodéru by se ztrácely. Vzorek teploty se proto **odloží, dokud se enkodér 1 s nepohne** (`ENC_QUIET_MS`); na prototypu se vzorek posunul o 0,7 s |
+
+| Konstanta | Hodnota | Význam |
+|---|---|---|
+| `KEYPAD_PERIOD_MS` | `5` | perioda skenování klávesnice |
+| `CODE_MAX_LEN` | `8` | nejdelší kód |
+| `ENC_POSITIONS` | `20` | poloh enkodéru na otáčku |
+| `ENC_REVERSE` | `true` | otočení směru (na prototypu doprava bez otočení ubývalo) |
+| `ENC_REPORT_MS` | `100` | nejkratší interval zpráv `turn` |
+| `ENC_QUIET_MS` | `1000` | odklad čtení DHT11 po otočení enkodéru |
+
+Ověřeno na prototypu 21. 11. 2026: kódy `1234`, `78` (po `*`), `ABCD`; enkodér oběma směry přes 0; stisk osy;
+povel `lcd`; MVP zařízení a `seq` bez mezer.

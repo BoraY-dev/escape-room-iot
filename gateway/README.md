@@ -19,6 +19,18 @@ s cloudem komunikuje přes HTTPS. Návrh: `docs/03-application-model/iot-gateway
 se mažou po **24 h** (diagnostika ze stejného herního dne), potvrzené povely po 7 dnech. Trvale odmítnutý záznam
 jde do karantény a neblokuje ostatní.
 
+## Rozšíření: klávesnice, enkodér, LCD
+
+Flow přijme node s firmwarem 1.1.0 a `ENABLE_EXTENSIONS = 1` (`iot-node/README.md`). Cloud nové typy zatím nezná,
+proto zůstávají **jen na gateway** (`CLOUD_DEVICE_TYPES` v `src/lib/gw.js`): do heartbeatu ani do fronty nejdou.
+
+- Dashboard *Stav gateway → Rozšíření*: poslední kód z klávesnice, poloha enkodéru, text na LCD.
+- Dashboard *Displej nodu (LCD)*: formulář pro ruční text na displeji (diakritika se odstraní, max. 16 znaků).
+- Pravidla z cloudu s podmínkou `eq` (kód, poloha) a akcí `showText` gateway vyhodnotí, až je cloud bude umět poslat.
+- Simulátor má i `hello` s rozšířením, klávesu, kód a polohu enkodéru.
+
+S MVP firmwarem (`ENABLE_EXTENSIONS = 0`) se flow chová jako dřív.
+
 ## Soubory
 
 | Soubor | Obsah |
@@ -34,8 +46,12 @@ jde do karantény a neblokuje ostatní.
 1. Node-RED a Node.js (LTS) oficiálním skriptem – vytvoří službu `nodered.service`:
 
    ```bash
-   bash <(curl -sL https://github.com/node-red/linux-installers/releases/latest/download/update-nodejs-and-nodered-deb)
+   bash <(curl -fsSL https://raw.githubusercontent.com/node-red/linux-installers/master/deb/update-nodejs-and-nodered)
    ```
+
+   Odpovědi: „Are you really sure?“ → **y**, „Pi-specific nodes?“ → **n** (GPIO nepoužíváme).
+   `-f` zajistí, že se při chybě serveru (404) nespustí chybová stránka jako skript. Odkaz přes
+   `releases/latest/download/…-deb` už nefunguje (404, ověřeno 21. 11. 2026).
 
 2. Rozšíření Node-RED (sériová linka, dashboard, databáze):
 
