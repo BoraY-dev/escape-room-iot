@@ -168,13 +168,18 @@ Všechny zemnicí vodiče vedou na společnou **GND** Arduina.
 
 ## 6. Rozšíření (2. fáze, mimo MVP)
 
-Klávesnice, enkodér a LCD jsou na prototypu zapojené a vyzkoušené, ale firmware MVP je nepoužívá
-a cloud pro ně zatím nemá typy zařízení. Ve 2. fázi přibudou typy `keypad` (událost „zadaný kód“),
-`encoder` (hodnota) a `display` (povel s textem, 2 × 16 znaků se vejde do limitu povelu 128 B) a k nim podmínky a akce pravidel.
+Klávesnice, enkodér a LCD jsou na prototypu zapojené a 21. 11. 2026 ověřené s firmwarem 1.1.0
+(`ENABLE_EXTENSIONS = 1`, `iot-node.md` kap. 11). Cloud pro ně zatím nemá typy zařízení, proto je přepínač
+ve výchozím stavu vypnutý. Typy `keypad` (událost „zadaný kód“), `encoder` (poloha) a `display` (povel s textem,
+2 × 16 znaků se vejde do limitu povelu 128 B) popisuje `iot-protocol.md` kap. 9; v cloudu k nim přibudou
+podmínky a akce pravidel.
 
-**Známé omezení enkodéru:** D6–D8 nemají na Mega přerušení, firmware je tedy musí číst v hlavní smyčce.
-Během čtení DHT11 (asi 25 ms) by se kroky enkodéru při rychlém otáčení ztrácely. Při zapojení 2. fáze proto
-přepojit CLK a DT na **D18 a D19** (piny s přerušením, volné), nebo DHT11 během otáčení nečíst.
+Samostatný testovací program `iot-node/hw-test` ověří zapojení klávesnice (hlásí i řádek a sloupec), enkodéru
+a LCD bez gateway.
+
+**Omezení enkodéru:** D6–D8 nemají na Mega přerušení, firmware je tedy čte v hlavní smyčce.
+Čtení DHT11 (asi 25 ms) by kroky při rychlém otáčení ztrácelo, proto firmware teplotu během otáčení nečte.
+Kdyby to nestačilo, lze přepojit CLK a DT na **D18 a D19** (piny s přerušením, volné).
 
 Další volné piny (A0–A15, D9–D13, D24–D29, D38, D39, D46–D53) umožňují přidat podle US18 a US19 bzučák nebo relé
 pro magnetický zámek a další senzory. Každé nové zařízení dostane vlastní `hwId` a ohlásí se ve zprávě `hello`.
@@ -183,9 +188,11 @@ pro magnetický zámek a další senzory. Každé nové zařízení dostane vlas
 
 Prototyp je zapojený a součástky fungují s testovacím programem. S firmwarem podle `iot-node.md` zbývá ověřit:
 
-| # | Co | Proč |
-|---|---|---|
-| 1 | že se Arduino na RPi objeví jako `/dev/ttyACM0`, nebo `/dev/ttyUSB0` | klony s čipem CH340 se hlásí jinak; gateway používá `/dev/serial/by-id/…` |
-| 2 | restart watchdogem | starší bootloadery Mega 2560 se po restartu watchdogem zacyklí (`iot-node.md` kap. 8) |
-| 3 | orientace GY-521 v herním předmětu | výchozí poloha musí odpovídat ose Z nahoru |
-| 4 | zapojení krajních vývodů potenciometru LCD (předpoklad 5V a GND) | ve schématu nejsou zakreslené; týká se jen rozšíření |
+| # | Co | Proč | Stav (21. 11. 2026) |
+|---|---|---|---|
+| 1 | že se Arduino na RPi objeví jako `/dev/ttyACM0`, nebo `/dev/ttyUSB0` | klony s čipem CH340 se hlásí jinak; gateway používá `/dev/serial/by-id/…` | ve Windows originální Mega (USB VID 2341, čip 16U2) → na RPi se čeká `ttyACM0`; ověřit na RPi |
+| 2 | restart watchdogem | starší bootloadery Mega 2560 se po restartu watchdogem zacyklí (`iot-node.md` kap. 8) | ⬜ |
+| 3 | orientace GY-521 v herním předmětu | výchozí poloha musí odpovídat ose Z nahoru | ⚠️ v klidu hlásí náklon 94–99°, modul leží na boku – otočit čipem nahoru |
+| 4 | zapojení krajních vývodů potenciometru LCD (předpoklad 5V a GND) | ve schématu nejsou zakreslené; týká se jen rozšíření | ✅ kontrast funguje |
+| 5 | rychlost linky 115 200 Bd | v prvním testu ukazoval Serial Monitor nesmysly | ✅ funguje; nesmysly byly způsobené jinou rychlostí nastavenou v Serial Monitoru |
+| 6 | klávesnice, enkodér, LCD | rozšíření | ✅ všechny klávesy včetně 4. sloupce, enkodér oběma směry, LCD |
