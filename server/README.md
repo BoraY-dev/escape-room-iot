@@ -22,6 +22,16 @@ npm run dev                 # http://localhost:3000/health
 Demo účty `npm run dev:memory` (jen lokálně, data po ukončení zmizí):
 `operator@demo.local` a `gamemaster@demo.local`, heslo `demo-heslo-123`.
 
+## Ovládání hry z příkazové řádky (před frontendem)
+
+```powershell
+$env:API = "https://escape-room-iot-api.onrender.com"; $env:EMAIL = "<e-mail>"; $env:USER_PASSWORD = "<heslo>"
+node scripts/play.js rooms                                # místnosti, gateway, zařízení
+node scripts/play.js demo --room "Testovací místnost"     # ukázkový scénář (3 hádanky) nad zařízeními místnosti
+node scripts/play.js reset --room "Testovací místnost"    # dále start | pause | resume | stop | status
+node scripts/play.js solve --room "Testovací místnost" --puzzle 2
+```
+
 ## Struktura
 
 | Soubor / složka | Obsah |
