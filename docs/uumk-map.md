@@ -36,7 +36,7 @@ kardinality v diagramu produktů vyjadřují typy čar; Data binding je zatím t
 | Main page | Application Description (node, gateway, cloud, profily, toky dat, zabezpečení), Application Topology | – | ✅ |
 | Application Profiles | Role Profiles (Operators, GameMasters, Gateways), Role Group Profiles, matice oprávnění vč. `user/login` | 6 | ✅ (aktualizováno 19. 11.) |
 | Persistence Layer | Schema Diagram, Schema, Limit List, DAO Method List | 6 | ✅ (19. 11.: `lastValue.occurredAt`) |
-| Command List | uuCommand: dtoIn validace, dtoOut, chyby (`unsupportedKeys`, `invalidDtoIn`); 19. 11. přidán `user/login` | 6 | ✅ |
+| Command List | uuCommand (Basic Info + algoritmus): `user/login`, 20 commandů webové aplikace (room, device, scenario, puzzle, game), 9 commandů gateway | 6 | ⚠️ 22. 11.: webové commandy na stránce chyběly – vložit celou stránku `command-list-cela-stranka.txt` |
 | User view entry points | vstupní body (routy) | 9 | ❌ |
 | Routes | Basic Info, props, Component Diagram, render pravidla | 9 | ❌ šablona |
 | Components | Basic Info, props, Component Diagram | 9 | ❌ šablona |

@@ -59,4 +59,4 @@ cd client && npm install && npm run dev     # http://localhost:5173
 | 8 | Základní implementace IoT části | ✅ |
 | 9 | Návrh frontendu (routy, komponenty) | ⬜ |
 | 10 | Základní implementace frontendu | ⬜ |
-| 12 | Nasazení v cloudu | ⬜ |
+| 12 | Nasazení v cloudu | 🔶 backend nasazený, frontend zatím ne |

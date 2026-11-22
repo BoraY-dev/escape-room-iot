@@ -122,7 +122,7 @@ Aktéři: **Provozovatel**, **Game master**, **Hráč** (jen fyzicky ovládá p�
 | 3 | Popsány klíčové user stories | 2 | ✅ |
 | 3 | Git repozitář založen, odkázán na portále, úvodní commit | 2 | ✅ https://github.com/BoraY-dev/escape-room-iot |
 | 4 | Popsáni klíčoví aktéři, produkty a business use-cases | 2 | ✅ v uuBookKitu |
-| 6 | Návrh backendu (endpointy, datový model) | 2 | ✅ v uuMK (PR #1) |
+| 6 | Návrh backendu (endpointy, datový model) | 2 | ✅ v uuMK (PR #1); 0 bodů – commandy webové aplikace na stránce Command List chyběly, doplněny 22. 11. |
 | 7 | Navrženo technické řešení IoT části | 2 | ✅ (PR #2) |
 | 7 | Základní implementace backendu | 2 | ✅ (`server/`, testy `npm test`) |
 | 8 | Základní implementace IoT části (node, gateway) | 2 | ✅ firmware 1.1 na prototypu, gateway (Node-RED) na RPi s autostartem; celá hra ověřena přes flow proti cloudu (22. 11.) |
