@@ -9,7 +9,13 @@ const gw = (() => {
   const MAX_IN_LINE = 512;          // node → gateway
   const MAX_OUT_LINE = 128;         // gateway → node včetně \n
   const NODE_MESSAGE_TYPES = ["hello", "ev", "m", "hb", "ack", "err"];
-  const DEVICE_TYPES = ["button", "accelerometer", "thermometer", "led"];
+  // Typy zařízení, které gateway přijímá od nodu (rozšíření: iot-protocol.md kap. 9).
+  const DEVICE_TYPES = ["button", "accelerometer", "thermometer", "led", "keypad", "encoder", "display"];
+  // Podmnožina typů, které zná cloud. Ostatní zařízení zůstávají lokální: nejsou v heartbeatu a jejich
+  // události nejdou do fronty, protože by je cloud odmítl a bez mapování by čekaly neomezeně.
+  const CLOUD_DEVICE_TYPES = ["button", "accelerometer", "thermometer", "led"];
+  const NODE_EVENTS = ["press", "tilt", "move", "key", "code", "turn"];
+  const LCD_COLS = 16;
   const NODE_OFFLINE_MS = 15000;    // node bez zprávy 15 s = offline
 
   // Řádek ze sériové linky → { ok, msg } nebo { ok: false, error }
@@ -35,8 +41,11 @@ const gw = (() => {
         if (!m.devices.every((d) => d && isId(d.id) && DEVICE_TYPES.includes(d.type))) return "badHelloDevice";
         return null;
       case "ev":
-        if (!isId(m.id) || !["press", "tilt", "move"].includes(m.e)) return "badEvent";
+        if (!isId(m.id) || !NODE_EVENTS.includes(m.e)) return "badEvent";
         if (m.e === "tilt" && !(Number.isFinite(m.v) && m.v >= 0 && m.v <= 180)) return "badTilt";
+        if (m.e === "key" && !(typeof m.v === "string" && /^[0-9A-D*#]$/.test(m.v))) return "badKey";
+        if (m.e === "code" && !(typeof m.v === "string" && /^[0-9A-D]{1,8}$/.test(m.v))) return "badCode";
+        if (m.e === "turn" && !(Number.isInteger(m.v) && m.v >= 0 && m.v <= 255)) return "badTurn";
         return null;
       case "m":
         return isId(m.id) && Number.isFinite(m.v) ? null : "badMeasurement";
@@ -65,6 +74,27 @@ const gw = (() => {
 
   const nodeOfHwId = (hwId) => String(hwId).split(".")[0];
 
+  // Typ zařízení podle posledního hello jeho nodu; null, pokud není známý.
+  function deviceTypeOf(nodes, hwId) {
+    const d = (nodes?.[nodeOfHwId(hwId)]?.devices ?? []).find((x) => x.id === hwId);
+    return d ? d.type : null;
+  }
+
+  // Zařízení neznámého typu se zpracuje jako dosud; o odeslání rozhodne mapování z heartbeatu.
+  const isCloudDevice = (nodes, hwId) => {
+    const type = deviceTypeOf(nodes, hwId);
+    return type === null || CLOUD_DEVICE_TYPES.includes(type);
+  };
+
+  // Text pro LCD 1602: odstraní diakritiku, ostatní znaky mimo tisknutelné ASCII nahradí '?'
+  // a zkrátí na šířku displeje. Povel lcd se tak vždy vejde do limitu 128 B.
+  function lcdText(value) {
+    return String(value ?? "")
+      .normalize("NFD").replace(/[̀-ͯ]/g, "")   // NFD oddělí diakritická znaménka od písmen
+      .replace(/[^\x20-\x7e]/g, "?")
+      .slice(0, LCD_COLS);
+  }
+
   // ---------------------------------------------------------------------------
   // Downsampling teploty: medián za 5min okno UTC (iot-gateway.md kap. 8)
   // ---------------------------------------------------------------------------
@@ -90,6 +120,7 @@ const gw = (() => {
   // ---------------------------------------------------------------------------
   function conditionHolds(condition, value) {
     if (!condition) return true; // press, move: bez podmínky
+    if (condition.operator === "eq") return value === condition.value; // shoda včetně typu: kód je text, poloha číslo
     if (!Number.isFinite(value)) return false;
     switch (condition.operator) {
       case "gt": return value > condition.value;
@@ -100,11 +131,20 @@ const gw = (() => {
     }
   }
 
-  // Které nevyřešené hádanky událost řeší a jaké LED akce spouští.
+  // Akce měnící výstup nodu: LED { deviceId, state }, LCD { deviceId, text: [řádek1, řádek2] }
+  function outputActionOf(a) {
+    if (!a?.deviceId) return null;
+    if (a.type === "setLed") return { deviceId: a.deviceId, state: a.state };
+    if (a.type === "showText") return { deviceId: a.deviceId, text: [a.line1 ?? "", a.line2 ?? ""] };
+    return null;
+  }
+  const outputActionsOf = (actions) => (actions ?? []).map(outputActionOf).filter(Boolean);
+
+  // Vrací nevyřešené hádanky, které událost řeší, a výstupní akce splněných pravidel.
   // puzzles: scenario.puzzleList z konfigurace, solved: Set puzzleId už vyřešených
   function evaluateRules(puzzles, solved, deviceId, eventType, value) {
     const solvedNow = [];
-    const ledActions = [];
+    const outputActions = [];
     for (const puzzle of puzzles ?? []) {
       if (solved.has(puzzle.id)) continue; // vyřešenou hádanku pravidla znovu neřeší
       for (const rule of puzzle.ruleList ?? []) {
@@ -112,19 +152,19 @@ const gw = (() => {
         if (!conditionHolds(rule.condition, value)) continue;
         const actions = rule.actionList ?? [];
         if (actions.some((a) => a.type === "solvePuzzle") && !solvedNow.includes(puzzle.id)) solvedNow.push(puzzle.id);
-        for (const a of actions) if (a.type === "setLed" && a.deviceId) ledActions.push({ deviceId: a.deviceId, state: a.state });
+        outputActions.push(...outputActionsOf(actions));
         if (solvedNow.includes(puzzle.id)) break;
       }
     }
-    return { solvedNow, ledActions };
+    return { solvedNow, outputActions };
   }
 
-  // LED akce hádanky (pro solvePuzzle s runActions)
-  function puzzleLedActions(puzzle) {
+  // Výstupní akce hádanky pro ruční vyřešení s runActions
+  function puzzleOutputActions(puzzle) {
     const out = [];
     for (const rule of puzzle?.ruleList ?? []) {
       if (!(rule.actionList ?? []).some((a) => a.type === "solvePuzzle")) continue;
-      for (const a of rule.actionList) if (a.type === "setLed" && a.deviceId) out.push({ deviceId: a.deviceId, state: a.state });
+      out.push(...outputActionsOf(rule.actionList));
     }
     return out;
   }
@@ -260,7 +300,9 @@ const gw = (() => {
     for (const n of Object.values(nodes ?? {})) {
       if (!n.lastSeen || nowMs - n.lastSeen > NODE_OFFLINE_MS) continue;
       const bad = new Set(n.badDevices ?? []);
-      for (const d of n.devices ?? []) if (!bad.has(d.id)) out.push({ hwId: d.id, type: d.type });
+      for (const d of n.devices ?? []) {
+        if (!bad.has(d.id) && CLOUD_DEVICE_TYPES.includes(d.type)) out.push({ hwId: d.id, type: d.type });
+      }
     }
     return out;
   }
@@ -297,9 +339,9 @@ const gw = (() => {
   }
 
   // Vyhodnocení podnětu ze zařízení (událost nebo vzorek teploty) proti pravidlům běžící hry.
-  // Vrací položky pro frontu (hintRequested, puzzleSolved), LED akce a případně změněnou hru.
+  // Vrací položky pro frontu (hintRequested, puzzleSolved), výstupní akce a případně změněnou hru.
   function applyRules({ config, game, deviceId, eventType, value, nowIso, uuid }) {
-    const result = { items: [], ledActions: [], game, gameChanged: false };
+    const result = { items: [], outputActions: [], game, gameChanged: false };
     const scenario = config?.scenario;
     // pravidla jen ve stavu running a se správnou revizí konfigurace
     if (!game || game.state !== "running" || !scenario || scenario.revision !== game.scenarioRevision || !deviceId) return result;
@@ -311,14 +353,14 @@ const gw = (() => {
     const solved = new Set(next.puzzles.filter((p) => p.state === "solved").map((p) => p.puzzleId));
     const known = new Set(next.puzzles.map((p) => p.puzzleId));
     const puzzles = (scenario.puzzleList ?? []).filter((p) => known.has(p.id));
-    const { solvedNow, ledActions } = evaluateRules(puzzles, solved, deviceId, eventType, value);
+    const { solvedNow, outputActions } = evaluateRules(puzzles, solved, deviceId, eventType, value);
     for (const puzzleId of solvedNow) {
       const p = next.puzzles.find((x) => x.puzzleId === puzzleId);
       p.state = "solved";
       p.solvedAt = nowIso;
       result.items.push({ type: "puzzleSolved", gatewayEventId: uuid(), occurredAt: nowIso, gameId: game.gameId, puzzleId, deviceId });
     }
-    result.ledActions = ledActions;
+    result.outputActions = outputActions;
     if (solvedNow.length) {
       // poslední vyřešená hádanka zastaví místní vyhodnocování (gameCompleted odvodí cloud)
       if (next.puzzles.length && next.puzzles.every((p) => p.state === "solved")) next.state = "completed";
@@ -329,10 +371,10 @@ const gw = (() => {
   }
 
   // Provedení cloudového povelu nad místním stavem hry.
-  // Vrací { game, ledActions, resetNodes, needConfig }; needConfig = nejdřív stáhnout správnou konfiguraci.
+  // Vrací { game, outputActions, resetNodes, needConfig }; needConfig = nejdřív stáhnout správnou konfiguraci.
   function applyCommand({ config, game, command, nowIso }) {
     const p = command.payload ?? {};
-    const out = { game: clone(game) ?? null, ledActions: [], resetNodes: false, needConfig: false };
+    const out = { game: clone(game) ?? null, outputActions: [], resetNodes: false, needConfig: false };
     const same = out.game && out.game.gameId === p.gameId;
     switch (command.type) {
       case "resetRoom":
@@ -362,7 +404,7 @@ const gw = (() => {
         if (!puzzle) return out;
         if (command.type === "solvePuzzle") {
           Object.assign(puzzle, { state: "solved", solvedAt: nowIso });
-          if (p.runActions) out.ledActions = puzzleLedActions((config?.scenario?.puzzleList ?? []).find((x) => x.id === p.puzzleId));
+          if (p.runActions) out.outputActions = puzzleOutputActions((config?.scenario?.puzzleList ?? []).find((x) => x.id === p.puzzleId));
         } else {
           Object.assign(puzzle, { state: "unsolved", solvedAt: null });
         }
@@ -382,37 +424,63 @@ const gw = (() => {
     if (state.errors.length > 20) state.errors.length = 20;
   }
 
-  // LED akce (cloudové deviceId) → povely pro node (hwId); uloží požadovaný stav LED pro obnovu po restartu nodu
-  function ledCommandsFor(state, actions, nowMs, statements) {
+  // Povel lcd vždy nastavuje oba řádky.
+  const lcdCommand = (hwId, lines) => ({ t: "lcd", id: hwId, l1: lcdText(lines?.[0]), l2: lcdText(lines?.[1]) });
+
+  // Převede výstupní akce (cloudové deviceId) na povely nodu (hwId) a uloží požadovaný stav LED a LCD
+  // pro obnovu po restartu nodu.
+  function outputCommandsFor(state, actions, nowMs, statements) {
     const hwIdByDevice = Object.fromEntries(Object.entries(state.deviceMap ?? {}).map(([hwId, id]) => [id, hwId]));
+    state.leds ??= {};
+    state.displays ??= {};
     const commands = [];
+    let ledsChanged = false;
+    let displaysChanged = false;
     for (const a of actions ?? []) {
       const hwId = hwIdByDevice[a.deviceId];
       if (!hwId) continue;
-      state.leds[hwId] = a.state;
-      commands.push({ t: "led", id: hwId, s: a.state });
+      if (a.text) {
+        const cmd = lcdCommand(hwId, a.text);
+        state.displays[hwId] = [cmd.l1, cmd.l2];
+        commands.push(cmd);
+        displaysChanged = true;
+      } else {
+        state.leds[hwId] = a.state;
+        commands.push({ t: "led", id: hwId, s: a.state });
+        ledsChanged = true;
+      }
     }
-    if (commands.length) statements.push(kvUpsertSql("leds", state.leds, nowMs));
+    if (ledsChanged) statements.push(kvUpsertSql("leds", state.leds, nowMs));
+    if (displaysChanged) statements.push(kvUpsertSql("displays", state.displays, nowMs));
     return commands;
   }
 
-  // Výsledek applyRules → SQL příkazy (fronta, stav hry) a LED povely; mění sdílený stav
+  // Povely, které po restartu nodu obnoví požadovaný stav jeho LED a LCD.
+  function nodeRestoreCommands(state, nodeId) {
+    const ofNode = ([hwId]) => nodeOfHwId(hwId) === nodeId;
+    return [
+      ...Object.entries(state.leds ?? {}).filter(ofNode).map(([hwId, s]) => ({ t: "led", id: hwId, s })),
+      ...Object.entries(state.displays ?? {}).filter(ofNode).map(([hwId, lines]) => lcdCommand(hwId, lines)),
+    ];
+  }
+
+  // Výsledek applyRules → SQL příkazy (fronta, stav hry) a povely pro node; mění sdílený stav
   function commitRuleResult(state, result, nowMs) {
     const statements = result.items.map((it) => outboxInsertSql("event", it.gatewayEventId, null, it, "pending", nowMs));
     if (result.gameChanged) {
       state.game = result.game;
       statements.push(kvUpsertSql("game", state.game, nowMs));
     }
-    const ledCommands = ledCommandsFor(state, result.ledActions, nowMs, statements);
-    return { statements, ledCommands };
+    const nodeCommands = outputCommandsFor(state, result.outputActions, nowMs, statements);
+    return { statements, nodeCommands };
   }
 
   return {
-    pushError, ledCommandsFor, commitRuleResult,
-    MAX_IN_LINE, MAX_OUT_LINE, NODE_OFFLINE_MS, DEVICE_TYPES, WINDOW_SEC, BATCH_SIZE, SCHEMA,
-    parseLine, seqGap, nodeCommandLine, nodeOfHwId,
+    pushError, outputCommandsFor, nodeRestoreCommands, commitRuleResult, lcdCommand, lcdText,
+    MAX_IN_LINE, MAX_OUT_LINE, NODE_OFFLINE_MS, DEVICE_TYPES, CLOUD_DEVICE_TYPES, NODE_EVENTS, WINDOW_SEC, BATCH_SIZE, SCHEMA,
+    parseLine, seqGap, nodeCommandLine, nodeOfHwId, deviceTypeOf, isCloudDevice,
     windowStartMs, median, windowClosed,
-    conditionHolds, evaluateRules, puzzleLedActions, gameExpired,
+    conditionHolds, evaluateRules, puzzleOutputActions, gameExpired,
     backoffMs, classifyResponse, confirmedKeys, measurementKey, cloudRequest,
     lit, transaction, kvUpsertSql, outboxInsertSql, sqlList, availableDevices,
     newGameFromConfig, gameFromSnapshot, applyRules, applyCommand,

@@ -54,13 +54,90 @@ test("evaluateRules: náklon nad 45° vyřeší hádanku a rozsvítí LED", () =
     id: "p2",
     ruleList: [{ trigger: { deviceId: "btn", eventType: "press" }, actionList: [{ type: "solvePuzzle" }] }],
   }];
-  assert.deepEqual(gw.evaluateRules(puzzles, new Set(), "acc", "tilt", 30), { solvedNow: [], ledActions: [] });
+  assert.deepEqual(gw.evaluateRules(puzzles, new Set(), "acc", "tilt", 30), { solvedNow: [], outputActions: [] });
   assert.deepEqual(gw.evaluateRules(puzzles, new Set(), "acc", "tilt", 52), {
-    solvedNow: ["p1"], ledActions: [{ deviceId: "led1", state: "on" }],
+    solvedNow: ["p1"], outputActions: [{ deviceId: "led1", state: "on" }],
   });
   assert.deepEqual(gw.evaluateRules(puzzles, new Set(["p1"]), "acc", "tilt", 52).solvedNow, []); // už vyřešená
   assert.deepEqual(gw.evaluateRules(puzzles, new Set(), "btn", "press").solvedNow, ["p2"]);
-  assert.deepEqual(gw.puzzleLedActions(puzzles[0]), [{ deviceId: "led1", state: "on" }]);
+  assert.deepEqual(gw.puzzleOutputActions(puzzles[0]), [{ deviceId: "led1", state: "on" }]);
+});
+
+// --- rozšíření: klávesnice, enkodér, LCD (iot-protocol.md kap. 9) ---
+
+test("parseLine: zprávy rozšíření", () => {
+  const hello = { t: "hello", node: "node1", fw: "1.1.0", devices: [
+    { id: "node1.kp1", type: "keypad" }, { id: "node1.enc1", type: "encoder" }, { id: "node1.lcd1", type: "display" }] };
+  assert.equal(gw.parseLine(JSON.stringify(hello)).ok, true);
+  assert.equal(gw.parseLine('{"t":"ev","id":"node1.kp1","e":"key","v":"#","seq":1}').ok, true);
+  assert.equal(gw.parseLine('{"t":"ev","id":"node1.kp1","e":"code","v":"12AB","seq":2}').ok, true);
+  assert.equal(gw.parseLine('{"t":"ev","id":"node1.enc1","e":"turn","v":19,"seq":3}').ok, true);
+  assert.equal(gw.parseLine('{"t":"ev","id":"node1.kp1","e":"key","v":"x"}').error, "badKey");
+  assert.equal(gw.parseLine('{"t":"ev","id":"node1.kp1","e":"code","v":"123456789"}').error, "badCode"); // víc než 8 znaků
+  assert.equal(gw.parseLine('{"t":"ev","id":"node1.kp1","e":"code","v":1234}').error, "badCode");        // kód je text
+  assert.equal(gw.parseLine('{"t":"ev","id":"node1.enc1","e":"turn","v":-1}').error, "badTurn");
+});
+
+test("zařízení, která cloud nezná, zůstávají lokální", () => {
+  const now = 100000;
+  const nodes = { node1: { lastSeen: now, devices: [
+    { id: "node1.btn1", type: "button" }, { id: "node1.kp1", type: "keypad" }, { id: "node1.lcd1", type: "display" }] } };
+  assert.deepEqual(gw.availableDevices(nodes, now), [{ hwId: "node1.btn1", type: "button" }]);
+  assert.equal(gw.isCloudDevice(nodes, "node1.btn1"), true);
+  assert.equal(gw.isCloudDevice(nodes, "node1.kp1"), false);
+  assert.equal(gw.isCloudDevice(nodes, "node9.btn1"), true); // neznámý typ: rozhodne mapování
+});
+
+test("pravidla rozšíření: kód, poloha enkodéru a text na LCD", () => {
+  const puzzles = [{
+    id: "safe",
+    ruleList: [{
+      trigger: { deviceId: "kp", eventType: "code" },
+      condition: { operator: "eq", value: "1234" },
+      actionList: [{ type: "solvePuzzle" }, { type: "showText", deviceId: "lcd", line1: "Trezor otevřen!", line2: "Výborně" }],
+    }],
+  }, {
+    id: "dial",
+    ruleList: [{ trigger: { deviceId: "enc", eventType: "turn" }, condition: { operator: "eq", value: 7 }, actionList: [{ type: "solvePuzzle" }] }],
+  }];
+  assert.deepEqual(gw.evaluateRules(puzzles, new Set(), "kp", "code", "1235").solvedNow, []);
+  assert.deepEqual(gw.evaluateRules(puzzles, new Set(), "kp", "code", "1234"), {
+    solvedNow: ["safe"], outputActions: [{ deviceId: "lcd", text: ["Trezor otevřen!", "Výborně"] }],
+  });
+  assert.deepEqual(gw.evaluateRules(puzzles, new Set(), "enc", "turn", 6).solvedNow, []);
+  assert.deepEqual(gw.evaluateRules(puzzles, new Set(), "enc", "turn", 7).solvedNow, ["dial"]);
+  assert.equal(gw.conditionHolds({ operator: "eq", value: 7 }, "7"), false); // eq porovnává i typ
+});
+
+test("lcdText: bez diakritiky, jen ASCII, nejvýš 16 znaků", () => {
+  assert.equal(gw.lcdText("Žluťoučký kůň"), "Zlutoucky kun");
+  assert.equal(gw.lcdText("Příliš dlouhý text na displej"), "Prilis dlouhy te");
+  assert.equal(gw.lcdText("Teplota 20 °C"), "Teplota 20 ?C");
+  assert.equal(gw.lcdText(undefined), "");
+  // nejhorší případ: 16 escapovaných uvozovek na řádek a cid o 8 znacích
+  const cmd = { ...gw.lcdCommand("node1.lcd1", ['"'.repeat(20), '"'.repeat(20)]), cid: "12345678" };
+  assert.notEqual(gw.nodeCommandLine(cmd), null);
+});
+
+test("outputCommandsFor a obnova po restartu nodu: LED i LCD", () => {
+  const state = { deviceMap: { "node1.led1": "led1", "node1.lcd1": "lcd", "node2.led1": "led9" }, leds: {} };
+  const statements = [];
+  const cmds = gw.outputCommandsFor(state, [
+    { deviceId: "led1", state: "blink" },
+    { deviceId: "lcd", text: ["Ahoj hráči", ""] },
+    { deviceId: "led9", state: "on" },
+    { deviceId: "neznámé", state: "on" }, // bez hwId se přeskočí
+  ], 1, statements);
+  assert.deepEqual(cmds, [
+    { t: "led", id: "node1.led1", s: "blink" },
+    { t: "lcd", id: "node1.lcd1", l1: "Ahoj hraci", l2: "" },
+    { t: "led", id: "node2.led1", s: "on" },
+  ]);
+  assert.equal(statements.length, 2); // kv leds a kv displays
+  assert.deepEqual(gw.nodeRestoreCommands(state, "node1"), [
+    { t: "led", id: "node1.led1", s: "blink" },
+    { t: "lcd", id: "node1.lcd1", l1: "Ahoj hraci", l2: "" },
+  ]);
 });
 
 test("gameExpired: časový limit včetně pauz", () => {
@@ -156,7 +233,7 @@ test("applyCommand: ruční vyřešení s akcemi a vrácení hádanky", () => {
   const game = { ...gw.newGameFromConfig(config, "g1"), state: "running" };
   const solved = gw.applyCommand({ config, game, command: { type: "solvePuzzle", payload: { gameId: "g1", puzzleId: "p1", runActions: true } }, nowIso: NOW });
   assert.equal(solved.game.puzzles[0].state, "solved");
-  assert.deepEqual(solved.ledActions, [{ deviceId: "led1", state: "on" }]);
+  assert.deepEqual(solved.outputActions, [{ deviceId: "led1", state: "on" }]);
   const undone = gw.applyCommand({ config, game: solved.game, command: { type: "unsolvePuzzle", payload: { gameId: "g1", puzzleId: "p1" } }, nowIso: NOW });
   assert.equal(undone.game.puzzles[0].state, "unsolved");
   assert.equal(game.puzzles[0].state, "unsolved"); // původní objekt se nemění
@@ -171,7 +248,7 @@ test("applyRules: nápověda, vyřešení a dokončení hry", () => {
   const tilt = gw.applyRules({ config, game, deviceId: "acc", eventType: "tilt", value: 52, nowIso: NOW, uuid });
   assert.equal(tilt.items[0].type, "puzzleSolved");
   assert.equal(tilt.items[0].puzzleId, "p1");
-  assert.deepEqual(tilt.ledActions, [{ deviceId: "led1", state: "on" }]);
+  assert.deepEqual(tilt.outputActions, [{ deviceId: "led1", state: "on" }]);
   assert.equal(tilt.game.state, "running");
 
   const temp = gw.applyRules({ config, game: tilt.game, deviceId: "temp", eventType: "temperature", value: 31, nowIso: NOW, uuid });
@@ -195,8 +272,8 @@ test("commitRuleResult: fronta, stav hry a LED podle hwId", () => {
   const state = { deviceMap: { "node1.acc1": "acc", "node1.led1": "led1" }, leds: {}, game: null };
   const game = { ...gw.newGameFromConfig(config, "g1"), state: "running" };
   const r = gw.applyRules({ config, game, deviceId: "acc", eventType: "tilt", value: 60, nowIso: NOW, uuid });
-  const { statements, ledCommands } = gw.commitRuleResult(state, r, 1);
-  assert.deepEqual(ledCommands, [{ t: "led", id: "node1.led1", s: "on" }]);
+  const { statements, nodeCommands } = gw.commitRuleResult(state, r, 1);
+  assert.deepEqual(nodeCommands, [{ t: "led", id: "node1.led1", s: "on" }]);
   assert.equal(state.leds["node1.led1"], "on");
   assert.equal(state.game.puzzles[0].state, "solved");
   assert.equal(statements.length, 3); // puzzleSolved do fronty, stav hry, LED

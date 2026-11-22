@@ -1,7 +1,8 @@
-// Firmware IoT Node – Arduino Mega 2560
-// Návrh: docs/03-application-model/iot-node.md, formát zpráv: iot-protocol.md, zapojení: iot-hardware.md.
-// Node o hře nic neví: hlásí události a vzorky, vykonává povely gateway (LED, reset, who).
-// Program nikde nečeká – každá úloha v loop() si podle millis() hlídá svůj čas.
+// Firmware IoT Node (Arduino Mega 2560).
+// Návrh: docs/03-application-model/iot-node.md, zprávy: iot-protocol.md, zapojení: iot-hardware.md.
+//
+// Node neobsahuje herní logiku: hlásí události a vzorky a vykonává povely gateway.
+// Smyčka neblokuje, každá úloha se plánuje podle millis().
 
 #include <Wire.h>
 #include <ArduinoJson.h>
@@ -9,6 +10,9 @@
 #include <avr/wdt.h>
 #include <math.h>
 #include "config.h"
+#if ENABLE_EXTENSIONS
+#include <LiquidCrystal.h>
+#endif
 
 // ---------------------------------------------------------------------------
 // Stav
@@ -16,45 +20,64 @@
 
 DHT dht(PIN_DHT, DHT11);
 
-uint16_t seq = 0;                       // pořadové číslo zpráv (0–65535, pak znovu od 0)
+uint16_t seq = 0;                       // pořadové číslo zprávy, přetéká přes 65535
 
-char rxBuf[RX_BUFFER];                  // příjem povelu do \n
+char rxBuf[RX_BUFFER];
 uint8_t rxLen = 0;
-bool rxOverflow = false;                // řádek je delší než buffer → zahazujeme do \n
+bool rxOverflow = false;                // příliš dlouhý řádek se zahazuje až do \n
 
 struct Button {
-  bool raw;                             // poslední přečtená hodnota
-  bool stable;                          // hodnota uznaná po ošetření zákmitů
-  unsigned long changedMs;              // kdy se raw naposledy změnila
+  bool raw;
+  bool stable;                          // stav po ošetření zákmitů
+  unsigned long changedMs;
 };
 Button buttons[BUTTON_COUNT];
+#if ENABLE_EXTENSIONS
+Button encButton;
+#endif
 
 enum LedMode : uint8_t { LED_OFF, LED_ON, LED_BLINK };
 LedMode ledModes[LED_COUNT];
 bool blinkPhase = false;
 
-bool accOk = false;                     // GY-521 odpovídá
-float fx = 0, fy = 0, fz = 1;           // vyhlazené zrychlení (plovoucí průměr)
+bool accOk = false;
+float fx = 0, fy = 0, fz = 1;           // zrychlení po dolní propusti
 bool filterReady = false;
-bool tiltForce = true;                  // další tilt poslat hned (start, reset, obnova senzoru)
+bool tiltForce = true;                  // další náklon odeslat bez ohledu na pásmo necitlivosti
 int lastTiltSent = 0;
 
-bool tempOk = false;                    // DHT11 vrací hodnoty
-uint8_t tempFails = 0;                  // neúspěšná čtení po sobě
+bool tempOk = false;
+uint8_t tempFails = 0;
 
 unsigned long lastAccelMs = 0, lastTempMs = 0, lastHbMs = 0, lastBlinkMs = 0;
 unsigned long lastTiltMs = 0, lastMoveMs = 0, lastAccRetryMs = 0;
+
+#if ENABLE_EXTENSIONS
+// Konstruktor nastaví RS a E jako výstupy, proto objekt existuje jen s rozšířením.
+LiquidCrystal lcd(PIN_LCD_RS, PIN_LCD_E, PIN_LCD_D4, PIN_LCD_D5, PIN_LCD_D6, PIN_LCD_D7);
+
+char keyRaw = 0, keyStable = 0;         // 0 = žádná klávesa
+unsigned long keyChangedMs = 0, lastKeypadMs = 0;
+char code[CODE_MAX_LEN + 1];
+uint8_t codeLen = 0;
+
+uint8_t encPrev = 0;                    // poslední dva stavy (CLK, DT) jako 4 bity
+int8_t encAcc = 0;                      // přechody od poslední zarážky
+uint8_t encPos = 0;
+bool encDirty = false;                  // změna polohy čeká na odeslání
+unsigned long lastEncReportMs = 0, lastEncMoveMs = 0;
+#endif
 
 // ---------------------------------------------------------------------------
 // Odesílání zpráv
 // ---------------------------------------------------------------------------
 
-// hwId = "<NODE_ID>.<zařízení>", např. node1.btn2
+// hwId ve tvaru <NODE_ID>.<zařízení>, např. node1.btn2
 void makeId(char* out, size_t size, const char* device) {
   snprintf(out, size, "%s.%s", NODE_ID, device);
 }
 
-// Jediná cesta ven: doplní seq (kromě hello), zprávu pošle jako jeden řádek ukončený \n
+// Jeden JSON objekt na řádek; seq nese každá zpráva kromě hello.
 void send(JsonDocument& doc, bool withSeq = true) {
   if (withSeq) doc["seq"] = seq++;
   serializeJson(doc, Serial);
@@ -65,11 +88,11 @@ void addDevice(JsonArray devices, const char* device, const char* type) {
   char id[24];
   makeId(id, sizeof(id), device);
   JsonObject d = devices.add<JsonObject>();
-  d["id"] = id;                         // char[] se do dokumentu kopíruje
+  d["id"] = id;
   d["type"] = type;
 }
 
-// hello obsahuje jen funkční zařízení
+// Ohlásí jen zařízení, která právě fungují.
 void sendHello() {
   JsonDocument doc;
   doc["t"] = "hello";
@@ -87,6 +110,12 @@ void sendHello() {
     snprintf(name, sizeof(name), "led%u", i + 1);
     addDevice(devices, name, "led");
   }
+#if ENABLE_EXTENSIONS
+  // Přítomnost těchto zařízení nelze zjistit (LCD je zapojený jen pro zápis), ohlašují se vždy.
+  addDevice(devices, "kp1", "keypad");
+  addDevice(devices, "enc1", "encoder");
+  addDevice(devices, "lcd1", "display");
+#endif
   send(doc, false);
 }
 
@@ -101,7 +130,18 @@ void sendEvent(const char* device, const char* event, bool withValue = false, in
   send(doc);
 }
 
-// device = nullptr → chyba celého nodu (id = NODE_ID)
+void sendEventText(const char* device, const char* event, const char* value) {
+  char id[24];
+  makeId(id, sizeof(id), device);
+  JsonDocument doc;
+  doc["t"] = "ev";
+  doc["id"] = id;
+  doc["e"] = event;
+  doc["v"] = value;
+  send(doc);
+}
+
+// device == nullptr: chyba celého nodu
 void sendErr(const char* device, const char* code) {
   char id[24];
   if (device) makeId(id, sizeof(id), device);
@@ -136,7 +176,7 @@ void sendHeartbeat(unsigned long now) {
 // Tlačítka
 // ---------------------------------------------------------------------------
 
-// Načte aktuální stav bez hlášení (start a reset) – držené tlačítko se nesmí ohlásit jako nový stisk
+// Převezme aktuální stav bez hlášení, aby se držené tlačítko po startu nebo resetu neohlásilo.
 void syncButtons(unsigned long now) {
   for (uint8_t i = 0; i < BUTTON_COUNT; i++) {
     bool v = digitalRead(PIN_BUTTONS[i]);
@@ -144,25 +184,31 @@ void syncButtons(unsigned long now) {
   }
 }
 
+// Vrací true jen v okamžiku stisku po ošetření zákmitů. Vstupy mají pull-up, stisk je LOW.
+bool pressedNow(Button& b, uint8_t pin, unsigned long now) {
+  bool v = digitalRead(pin);
+  if (v != b.raw) {
+    b.raw = v;
+    b.changedMs = now;
+  } else if (v != b.stable && now - b.changedMs >= DEBOUNCE_MS) {
+    b.stable = v;
+    return v == LOW;
+  }
+  return false;
+}
+
 void updateButtons(unsigned long now) {
   for (uint8_t i = 0; i < BUTTON_COUNT; i++) {
-    bool v = digitalRead(PIN_BUTTONS[i]);
-    if (v != buttons[i].raw) {
-      buttons[i].raw = v;               // změna → začni měřit stabilitu znovu
-      buttons[i].changedMs = now;
-    } else if (v != buttons[i].stable && now - buttons[i].changedMs >= DEBOUNCE_MS) {
-      buttons[i].stable = v;            // hodnota drží 30 ms → uznat
-      if (v == LOW) {                   // stisk (INPUT_PULLUP: stisknuto = LOW); uvolnění se nehlásí
-        char name[8];
-        snprintf(name, sizeof(name), "btn%u", i + 1);
-        sendEvent(name, "press");
-      }
+    if (pressedNow(buttons[i], PIN_BUTTONS[i], now)) {
+      char name[8];
+      snprintf(name, sizeof(name), "btn%u", i + 1);
+      sendEvent(name, "press");
     }
   }
 }
 
 // ---------------------------------------------------------------------------
-// Akcelerometr GY-521 (MPU-6050), čtení přímo přes registry
+// Akcelerometr GY-521 (MPU-6050), přímý přístup k registrům
 // ---------------------------------------------------------------------------
 
 const uint8_t REG_ACCEL_XOUT_H = 0x3B;
@@ -188,11 +234,11 @@ bool mpuRead(uint8_t reg, uint8_t* buf, uint8_t count) {
 
 bool initAccel() {
   uint8_t who;
-  if (!mpuWrite(REG_PWR_MGMT_1, 0x00)) return false;     // probudit čip
+  if (!mpuWrite(REG_PWR_MGMT_1, 0x00)) return false;     // probuzení ze sleep
   if (!mpuWrite(REG_ACCEL_CONFIG, 0x00)) return false;   // rozsah ±2 g
   if (!mpuRead(REG_WHO_AM_I, &who, 1)) return false;
-  // MPU-6050 vrací 0x68; klony na modulech GY-521 (MPU-6500 apod.) vrací jinou hodnotu,
-  // registry zrychlení mají stejné. Chyba je jen „nic neodpovídá“.
+  // Klony modulu (MPU-6500 aj.) vracejí jiné WHO_AM_I než 0x68, registry zrychlení jsou shodné.
+  // Za chybu se proto považuje jen sběrnice bez odpovědi.
   if (who == 0x00 || who == 0xFF) return false;
   filterReady = false;
   tiltForce = true;
@@ -203,7 +249,7 @@ void accelFailed(unsigned long now) {
   accOk = false;
   lastAccRetryMs = now;
   sendErr("acc1", "sensorNotResponding");
-  sendHello();                          // acc1 už v seznamu není
+  sendHello();
 }
 
 int16_t toInt16(uint8_t hi, uint8_t lo) {
@@ -215,19 +261,19 @@ void updateAccelerometer(unsigned long now) {
   uint8_t b[6];
   if (!mpuRead(REG_ACCEL_XOUT_H, b, 6)) { accelFailed(now); return; }
 
-  const float LSB_PER_G = 16384.0;      // rozsah ±2 g
+  const float LSB_PER_G = 16384.0;      // pro rozsah ±2 g
   float ax = toInt16(b[0], b[1]) / LSB_PER_G;
   float ay = toInt16(b[2], b[3]) / LSB_PER_G;
   float az = toInt16(b[4], b[5]) / LSB_PER_G;
 
-  // Pohyb: v klidu je |a| = 1 g (gravitace)
+  // Pohyb: velikost zrychlení se odchýlí od klidové hodnoty 1 g.
   float mag = sqrt(ax * ax + ay * ay + az * az);
   if (fabs(mag - 1.0) > MOVE_THRESHOLD_G && now - lastMoveMs >= MOVE_COOLDOWN_MS) {
     lastMoveMs = now;
     sendEvent("acc1", "move");
   }
 
-  // Náklon: vyhlazení každé osy, pak úhel mezi osou Z a svislicí
+  // Náklon: úhel mezi osou Z a svislicí z vyhlazeného vektoru.
   if (!filterReady) { fx = ax; fy = ay; fz = az; filterReady = true; }
   else {
     fx = 0.8 * fx + 0.2 * ax;
@@ -235,7 +281,7 @@ void updateAccelerometer(unsigned long now) {
     fz = 0.8 * fz + 0.2 * az;
   }
   float fmag = sqrt(fx * fx + fy * fy + fz * fz);
-  if (fmag < 0.1) return;               // volný pád / nesmyslná hodnota – náklon nelze určit
+  if (fmag < 0.1) return;               // volný pád, směr nelze určit
   float c = constrain(fz / fmag, -1.0, 1.0);
   int tilt = (int)lround(acos(c) * 180.0 / M_PI);
 
@@ -252,17 +298,17 @@ void updateAccelerometer(unsigned long now) {
 // Teploměr DHT11
 // ---------------------------------------------------------------------------
 
-// Čtení trvá asi 25 ms a knihovna při přenosu na pár ms vypne přerušení (viz iot-node.md kap. 5)
+// Čtení trvá přibližně 25 ms a knihovna během přenosu zakazuje přerušení (iot-node.md kap. 5).
 void sampleTemperature() {
   float t = dht.readTemperature();
-  if (isnan(t)) {                       // senzor neodpověděl
+  if (isnan(t)) {
     sendErr("temp1", "sensorNotResponding");
     if (tempFails < 255) tempFails++;
     if (tempOk && tempFails >= TEMP_FAIL_LIMIT) { tempOk = false; sendHello(); }
     return;
   }
   tempFails = 0;
-  if (!tempOk) { tempOk = true; sendHello(); }   // obnova senzoru
+  if (!tempOk) { tempOk = true; sendHello(); }
   if (t < TEMP_MIN_C || t > TEMP_MAX_C) { sendErr("temp1", "sensorOutOfRange"); return; }
 
   char id[24];
@@ -270,7 +316,7 @@ void sampleTemperature() {
   JsonDocument doc;
   doc["t"] = "m";
   doc["id"] = id;
-  doc["v"] = (int)lround(t);            // DHT11 měří v celých °C
+  doc["v"] = (int)lround(t);            // rozlišení DHT11 je 1 °C
   send(doc);
 }
 
@@ -304,6 +350,135 @@ int ledIndex(const char* id) {
   return -1;
 }
 
+#if ENABLE_EXTENSIONS
+// ---------------------------------------------------------------------------
+// Klávesnice 4x4 (kp1)
+// ---------------------------------------------------------------------------
+
+// Aktivní řádek je výstup LOW, ostatní zůstávají vstupy s vysokou impedancí,
+// takže současný stisk dvou kláves nezkratuje výstupy.
+char scanKeypad() {
+  for (uint8_t r = 0; r < 4; r++) {
+    pinMode(PIN_KEYPAD_ROWS[r], OUTPUT);
+    digitalWrite(PIN_KEYPAD_ROWS[r], LOW);
+    delayMicroseconds(10);
+    for (uint8_t c = 0; c < 4; c++) {
+      if (digitalRead(PIN_KEYPAD_COLS[c]) == LOW) {
+        pinMode(PIN_KEYPAD_ROWS[r], INPUT);
+        return KEYPAD_KEYS[r][c];
+      }
+    }
+    pinMode(PIN_KEYPAD_ROWS[r], INPUT);
+  }
+  return 0;
+}
+
+// Každý stisk se hlásí jako key. '*' maže rozepsaný kód, '#' ho odešle jako code.
+// Správnost kódu vyhodnocuje gateway.
+void handleKey(char k) {
+  char keyText[2] = {k, '\0'};
+  sendEventText("kp1", "key", keyText);
+  if (k == '*') {
+    codeLen = 0;
+  } else if (k == '#') {
+    if (codeLen > 0) {
+      code[codeLen] = '\0';
+      sendEventText("kp1", "code", code);
+      codeLen = 0;
+    }
+  } else if (codeLen < CODE_MAX_LEN) {
+    code[codeLen++] = k;
+  }
+}
+
+void updateKeypad(unsigned long now) {
+  if (now - lastKeypadMs < KEYPAD_PERIOD_MS) return;
+  lastKeypadMs = now;
+  char k = scanKeypad();
+  if (k != keyRaw) { keyRaw = k; keyChangedMs = now; return; }
+  if (k == keyStable || now - keyChangedMs < DEBOUNCE_MS) return;
+  keyStable = k;
+  if (k) handleKey(k);
+}
+
+// ---------------------------------------------------------------------------
+// Enkodér KY-040 (enc1)
+// ---------------------------------------------------------------------------
+
+uint8_t readEncoderPins() {
+  return (digitalRead(PIN_ENC_CLK) << 1) | digitalRead(PIN_ENC_DT);
+}
+
+// Kvadraturní dekodér s tabulkou přechodů: platný přechod dává ±1, neplatný (zákmit) 0.
+// Jedna zarážka odpovídá čtyřem přechodům. D6–D8 nemají přerušení, proto se volá v každém průchodu loop().
+// Poloha se posílá absolutně, takže ztracená zpráva neovlivní další.
+void updateEncoder(unsigned long now) {
+  static const int8_t TABLE[16] = {0, -1, 1, 0, 1, 0, 0, -1, -1, 0, 0, 1, 0, 1, -1, 0};
+  encPrev = ((encPrev << 2) | readEncoderPins()) & 0x0F;
+  encAcc += TABLE[encPrev];
+  if (encAcc >= 4 || encAcc <= -4) {
+    int8_t step = encAcc > 0 ? 1 : -1;
+    encAcc = 0;
+    if (ENC_REVERSE) step = -step;
+    encPos = (encPos + ENC_POSITIONS + step) % ENC_POSITIONS;
+    encDirty = true;
+    lastEncMoveMs = now;
+  }
+  if (encDirty && now - lastEncReportMs >= ENC_REPORT_MS) {
+    encDirty = false;
+    lastEncReportMs = now;
+    sendEvent("enc1", "turn", true, encPos);
+  }
+  if (pressedNow(encButton, PIN_ENC_SW, now)) sendEvent("enc1", "press");
+}
+
+// ---------------------------------------------------------------------------
+// LCD 1602 (lcd1)
+// ---------------------------------------------------------------------------
+
+// Přepíše celý řádek doplněný mezerami; lcd.clear() trvá 2 ms a způsobuje blikání.
+// Displej zobrazí jen ASCII: znak UTF-8 se nahradí '?', řídicí znaky mezerou.
+void lcdShow(uint8_t row, const char* text) {
+  char buf[LCD_COLS + 1];
+  uint8_t n = 0;
+  for (const uint8_t* p = (const uint8_t*)text; *p && n < LCD_COLS; p++) {
+    if (*p < 0x80) buf[n++] = *p >= 0x20 ? (char)*p : ' ';
+    else if ((*p & 0xC0) == 0xC0) buf[n++] = '?';   // úvodní bajt UTF-8; pokračovací bajty se přeskočí
+  }
+  while (n < LCD_COLS) buf[n++] = ' ';
+  buf[n] = '\0';
+  lcd.setCursor(0, row);
+  lcd.print(buf);
+}
+
+void setupExtensions(unsigned long now) {
+  for (uint8_t i = 0; i < 4; i++) {
+    pinMode(PIN_KEYPAD_ROWS[i], INPUT);
+    pinMode(PIN_KEYPAD_COLS[i], INPUT_PULLUP);
+  }
+  pinMode(PIN_ENC_CLK, INPUT_PULLUP);
+  pinMode(PIN_ENC_DT, INPUT_PULLUP);
+  pinMode(PIN_ENC_SW, INPUT_PULLUP);    // moduly KY-040 mají pull-up obvykle jen na CLK a DT
+  lcd.begin(LCD_COLS, LCD_ROWS);
+  lcdShow(0, NODE_ID " fw " FW_VERSION);
+  lcdShow(1, "");
+  resetExtensions(now);
+}
+
+// Výchozí stav po startu a po povelu reset. Držená klávesa ani tlačítko se neohlásí jako nový stisk.
+void resetExtensions(unsigned long now) {
+  codeLen = 0;
+  keyRaw = keyStable = scanKeypad();
+  keyChangedMs = now;
+  encPrev = readEncoderPins();
+  encAcc = 0;
+  encPos = 0;
+  encDirty = false;
+  bool sw = digitalRead(PIN_ENC_SW);
+  encButton = {sw, sw, now};
+}
+#endif
+
 // ---------------------------------------------------------------------------
 // Povely od gateway
 // ---------------------------------------------------------------------------
@@ -311,15 +486,27 @@ int ledIndex(const char* id) {
 void resetState(unsigned long now) {
   for (uint8_t i = 0; i < LED_COUNT; i++) ledModes[i] = LED_OFF;
   applyLeds();
-  tiltForce = true;                     // další tilt se pošle hned
+  tiltForce = true;
   syncButtons(now);
+#if ENABLE_EXTENSIONS
+  lcdShow(0, "");
+  lcdShow(1, "");
+  resetExtensions(now);
+#endif
 }
 
+bool isDevice(const char* id, const char* device) {
+  char expected[24];
+  makeId(expected, sizeof(expected), device);
+  return strcmp(id, expected) == 0;
+}
+
+// Povely nastavují absolutní stav, opakované doručení je proto neškodné.
 void handleCommand(char* line) {
   JsonDocument doc;
   DeserializationError error = deserializeJson(doc, line);
   const char* cid = doc["cid"];
-  if (error || cid == nullptr) {        // není na co odpovědět ack
+  if (error || cid == nullptr) {        // bez cid nelze odpovědět ack
     sendErr(nullptr, "badMessage");
     return;
   }
@@ -334,7 +521,7 @@ void handleCommand(char* line) {
     else if (strcmp(s, "off") == 0) mode = LED_OFF;
     else if (strcmp(s, "blink") == 0) mode = LED_BLINK;
     else { sendAck(cid, false, "badMessage"); return; }
-    ledModes[idx] = mode;               // absolutní stav – opakovaný povel nic nepokazí
+    ledModes[idx] = mode;
     applyLeds();
     sendAck(cid, true);
   } else if (strcmp(t, "reset") == 0) {
@@ -343,6 +530,15 @@ void handleCommand(char* line) {
   } else if (strcmp(t, "who") == 0) {
     sendAck(cid, true);
     sendHello();
+  } else if (strcmp(t, "lcd") == 0) {
+#if ENABLE_EXTENSIONS
+    if (!isDevice(doc["id"] | "", "lcd1")) { sendAck(cid, false, "unknownDevice"); return; }
+    lcdShow(0, doc["l1"] | "");         // chybějící řádek se smaže
+    lcdShow(1, doc["l2"] | "");
+    sendAck(cid, true);
+#else
+    sendAck(cid, false, "unknownDevice");
+#endif
   } else {
     sendAck(cid, false, "unknownCommand");
   }
@@ -351,14 +547,14 @@ void handleCommand(char* line) {
 void readSerialCommands() {
   while (Serial.available()) {
     char c = Serial.read();
-    if (c == '\r') continue;            // tolerance CRLF
+    if (c == '\r') continue;
     if (c == '\n') {
       if (rxOverflow) { rxOverflow = false; sendErr(nullptr, "badMessage"); }
       else if (rxLen > 0) { rxBuf[rxLen] = '\0'; handleCommand(rxBuf); }
       rxLen = 0;
       continue;
     }
-    if (rxOverflow) continue;           // zahazujeme do nejbližšího \n
+    if (rxOverflow) continue;
     if (rxLen < RX_BUFFER - 1) rxBuf[rxLen++] = c;
     else rxOverflow = true;
   }
@@ -381,22 +577,26 @@ void checkSensorHealth(unsigned long now) {
 // ---------------------------------------------------------------------------
 
 void setup() {
-  MCUSR = 0;                            // po restartu watchdogem ho hned vypnout,
-  wdt_disable();                        // jinak by restartoval i během setup()
+  // Watchdog zůstává po resetu aktivní; bez vypnutí by restartoval už během setup().
+  MCUSR = 0;
+  wdt_disable();
 
   Serial.begin(SERIAL_BAUD);
   Wire.begin();
-  Wire.setWireTimeout(3000, true);      // 3 ms: nereagující I2C nesmí zaseknout smyčku
+  Wire.setWireTimeout(3000, true);      // nereagující I2C nesmí zablokovat smyčku
   dht.begin();
 
   for (uint8_t i = 0; i < BUTTON_COUNT; i++) pinMode(PIN_BUTTONS[i], INPUT_PULLUP);
   for (uint8_t i = 0; i < LED_COUNT; i++) { pinMode(PIN_LEDS[i], OUTPUT); ledModes[i] = LED_OFF; }
   applyLeds();
   syncButtons(millis());
+#if ENABLE_EXTENSIONS
+  setupExtensions(millis());
+#endif
 
   accOk = initAccel();
 
-  delay(1000);                          // DHT11 potřebuje po zapnutí ~1 s (jediné čekání, ještě před watchdogem)
+  delay(1000);                          // DHT11 vyžaduje po zapnutí ~1 s; watchdog ještě neběží
   tempOk = !isnan(dht.readTemperature());
 
   wdt_enable(WDTO_2S);
@@ -406,19 +606,27 @@ void setup() {
 
   unsigned long now = millis();
   lastAccelMs = lastHbMs = lastBlinkMs = lastAccRetryMs = now;
-  lastTempMs = now;                     // první vzorek teploty za 10 s
+  lastTempMs = now;
 }
 
+// Rozdíly now - last* jsou správně i po přetečení millis() (~49 dní).
 void loop() {
-  wdt_reset();                          // watchdog: smyčka běží
+  wdt_reset();
   unsigned long now = millis();
 
   readSerialCommands();
   updateButtons(now);
+#if ENABLE_EXTENSIONS
+  updateEncoder(now);
+  updateKeypad(now);
+  // Čtení DHT11 blokuje ~25 ms a enkodér by ztrácel kroky; během otáčení se odkládá.
+  bool tempAllowed = now - lastEncMoveMs >= ENC_QUIET_MS;
+#else
+  bool tempAllowed = true;
+#endif
   if (now - lastAccelMs >= ACCEL_PERIOD_MS) { lastAccelMs = now; updateAccelerometer(now); }
-  if (now - lastTempMs  >= TEMP_PERIOD_MS)  { lastTempMs  = now; sampleTemperature(); }
+  if (tempAllowed && now - lastTempMs >= TEMP_PERIOD_MS) { lastTempMs = now; sampleTemperature(); }
   if (now - lastHbMs    >= HB_PERIOD_MS)    { lastHbMs    = now; sendHeartbeat(now); }
   updateLedBlink(now);
   checkSensorHealth(now);
-  // Odčítání now - last… funguje i po přetečení millis() (asi po 49 dnech).
 }

@@ -11,11 +11,11 @@ const statements = [
   `INSERT INTO samples (hwId, receivedAt, value, windowStart) VALUES (${gw.lit(m.id)}, ${gw.lit(now)}, ${gw.lit(m.v)}, ${gw.lit(gw.windowStartMs(now))})`,
 ];
 const result = gw.applyRules({ config: S.config, game: S.game, deviceId, eventType: "temperature", value: m.v, nowIso, uuid: gw.uuid });
-const { statements: ruleStatements, ledCommands } = gw.commitRuleResult(S, result, now);
+const { statements: ruleStatements, nodeCommands } = gw.commitRuleResult(S, result, now);
 
 S.lastTemperature = { hwId: m.id, value: m.v, at: nowIso };
 node.status({ fill: "green", shape: "dot", text: `${m.id}: ${m.v} °C` });
 msg.topic = gw.transaction([...statements, ...ruleStatements]);
-msg.ledCommands = ledCommands;
+msg.nodeCommands = nodeCommands;
 msg.kind = "event";
 return msg;

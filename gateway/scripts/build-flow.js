@@ -61,6 +61,7 @@ const group = (id, name, order) => add({ id, type: "ui_group", name, tab: "ui_ta
 group("ui_grp_state", "Stav gateway", 1);
 group("ui_grp_reg", "Registrace", 2);
 group("ui_grp_ctl", "Ovládání", 3);
+group("ui_grp_lcd", "Displej nodu (LCD)", 4);
 
 // ---------------------------------------------------------------------------
 // 1 Start a databáze
@@ -111,9 +112,9 @@ errorLog(T2, "usb", { col: 0, row: 6 });
 // 3 Hra a data
 // ---------------------------------------------------------------------------
 const T3 = "tab_game";
-tab(T3, "3 Hra a data", "Události do fronty, lokální pravidla hádanek, vzorky teploty a medián za 5min okno UTC.");
+tab(T3, "3 Hra a data", "Události do fronty, lokální pravidla hádanek, vzorky teploty a medián za 5min okno UTC. Události zařízení, která cloud nezná (klávesnice, enkodér), zůstávají lokální.");
 linkIn(T3, "li_event", "Událost", { col: 0, row: 0, wires: [["fn_event"]] });
-fn(T3, "fn_event", "Zpracovat událost", "game-event.js", { col: 1, row: 0, wires: [["lc_event"]] });
+fn(T3, "fn_event", "Zpracovat událost", "game-event.js", { col: 1, row: 0, outputs: 2, wires: [["lc_event"], ["fn_after"]] });
 dbBatch(T3, "lc_event", { col: 2, row: 0, wires: [["fn_after"]] });
 linkIn(T3, "li_sample", "Teplota", { col: 0, row: 1, wires: [["fn_sample"]] });
 fn(T3, "fn_sample", "Uložit vzorek", "temperature-sample.js", { col: 1, row: 1, wires: [["lc_sample"]] });
@@ -203,7 +204,7 @@ tab(T5, "5 Dashboard", "Provozní dashboard gateway: stav cloudu, nodů a fronty
 inject(T5, "inj_stats", "každých 5 s", { col: 0, row: 0, repeat: 5, once: true, onceDelay: 3, wires: [["fn_statsq"]] });
 fn(T5, "fn_statsq", "Statistika fronty", "stats-query.js", { col: 1, row: 0, wires: [["lc_stats"]] });
 dbQuery(T5, "lc_stats", { col: 2, row: 0, wires: [["fn_dash"]] });
-const texts = [["ui_cloud", "Cloud"], ["ui_identity", "Identita"], ["ui_game", "Hra"], ["ui_nodes", "Nody"], ["ui_queue", "Fronta dat"], ["ui_errors", "Poslední chyby"]];
+const texts = [["ui_cloud", "Cloud"], ["ui_identity", "Identita"], ["ui_game", "Hra"], ["ui_nodes", "Nody"], ["ui_queue", "Fronta dat"], ["ui_errors", "Poslední chyby"], ["ui_ext", "Rozšíření"]];
 fn(T5, "fn_dash", "Stav pro dashboard", "dashboard-status.js", { col: 3, row: 0, outputs: texts.length, wires: texts.map(([id]) => [id]) });
 texts.forEach(([id, label], i) => add({
   id, type: "ui_text", z: T5, group: "ui_grp_state", order: i + 1, width: 0, height: 0, name: label, label,
@@ -226,7 +227,19 @@ linkOut(T5, "lo_ui_config", "→ konfigurace", ["li_config"], { col: 1, row: 9 }
 button("ui_btn_quarantine", "Vrátit karanténu k odeslání", 2, 10, [["fn_quarantine"]]);
 fn(T5, "fn_quarantine", "Karanténa zpět", "quarantine-retry.js", { col: 1, row: 10, wires: [["lc_quarantine"]] });
 dbBatch(T5, "lc_quarantine", { col: 2, row: 10 });
-errorLog(T5, "ui", { col: 0, row: 12 });
+// Ruční text na LCD nodu
+add({
+  id: "ui_lcdform", type: "ui_form", z: T5, name: "Text na LCD", label: "", group: "ui_grp_lcd", order: 1, width: 0, height: 0,
+  options: [
+    { label: "Řádek 1 (max. 16 znaků, bez diakritiky)", value: "l1", type: "text", required: false, rows: null },
+    { label: "Řádek 2", value: "l2", type: "text", required: false, rows: null },
+  ],
+  formValue: { l1: "", l2: "" }, payload: "", submit: "Zobrazit", cancel: "Zrušit", topic: "topic", topicType: "msg",
+  splitLayout: "", className: "", ...pos(0, 11), wires: [["fn_lcdmanual"]],
+});
+fn(T5, "fn_lcdmanual", "Povel lcd", "lcd-manual.js", { col: 1, row: 11, wires: [["lo_ui_lcd"]] });
+linkOut(T5, "lo_ui_lcd", "→ povel pro node", ["li_cmd"], { col: 2, row: 11 });
+errorLog(T5, "ui", { col: 0, row: 13 });
 
 // ---------------------------------------------------------------------------
 // 6 Simulátor (vývoj): zprávy „jako z Arduina“ pro test bez hardwaru
@@ -244,6 +257,15 @@ const sim = [
   ["sim_move", "pohyb", { t: "ev", id: "node1.acc1", e: "move", seq: 4 }],
   ["sim_temp", "teplota 23 °C", { t: "m", id: "node1.temp1", v: 23, seq: 5 }],
   ["sim_err", "chyba DHT11", { t: "err", id: "node1.temp1", code: "sensorNotResponding", seq: 6 }],
+  // Rozšíření, firmware s ENABLE_EXTENSIONS = 1
+  ["sim_hello_ext", "hello s rozšířením", { t: "hello", node: "node1", fw: "1.1.0", devices: [
+    { id: "node1.btn1", type: "button" }, { id: "node1.btn2", type: "button" }, { id: "node1.btn3", type: "button" },
+    { id: "node1.acc1", type: "accelerometer" }, { id: "node1.temp1", type: "thermometer" },
+    { id: "node1.led1", type: "led" }, { id: "node1.led2", type: "led" },
+    { id: "node1.kp1", type: "keypad" }, { id: "node1.enc1", type: "encoder" }, { id: "node1.lcd1", type: "display" }] }],
+  ["sim_key", "klávesa 7", { t: "ev", id: "node1.kp1", e: "key", v: "7", seq: 7 }],
+  ["sim_code", "kód 1234", { t: "ev", id: "node1.kp1", e: "code", v: "1234", seq: 8 }],
+  ["sim_turn", "enkodér poloha 7", { t: "ev", id: "node1.enc1", e: "turn", v: 7, seq: 9 }],
 ];
 sim.forEach(([id, name, message], i) => inject(T6, id, name, { col: 0, row: i, payload: JSON.stringify(message), wires: [["lo_sim"]] }));
 inject(T6, "sim_hb_auto", "hb každých 5 s (zapnout pro delší test)", { col: 0, row: sim.length, repeat: 5, payload: JSON.stringify({ t: "hb", node: "node1", up: 120 }), wires: [["lo_sim"]], disabled: true });

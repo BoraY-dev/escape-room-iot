@@ -45,8 +45,9 @@ Každý node má v firmwaru konstantu `NODE_ID` (např. `node1`). Zařízení na
 | `node1.temp1` | `thermometer` | vzorky teploty (`m`), DHT11 |
 | `node1.led1` (zelená), `node1.led2` (červená) | `led` | povel `led` |
 
-Klávesnice, enkodér a LCD zapojené pro 2. fázi (`iot-hardware.md` kap. 6) v protokolu MVP nejsou.
-Přibudou jako nové typy zařízení s vlastními událostmi a povely; díky JSON formátu bez změny stávajících zpráv.
+Klávesnice, enkodér a LCD zapojené pro 2. fázi (`iot-hardware.md` kap. 6) jsou nové typy zařízení s vlastními
+událostmi a povely, popsané v **kapitole 9**. Stávající zprávy se jimi nemění; firmware je ohlašuje jen
+s přepínačem `ENABLE_EXTENSIONS = 1`.
 
 ## 3. Zprávy node → gateway
 
@@ -253,14 +254,80 @@ sequenceDiagram
   C-->>G: povely zadané během výpadku (v pořadí)
 ```
 
+## 9. Rozšíření (2. fáze): klávesnice, enkodér, LCD
+
+Firmware 1.1.0 je obsluhuje, pokud je přeložený s `ENABLE_EXTENSIONS = 1` (`iot-node/escape-node/config.h`).
+Ve výchozím nastavení (`0`) je vypnutý, protože současná gateway celé `hello` s neznámým typem zařízení odmítne
+(`badHelloDevice`) a cloud typy `keypad`, `encoder`, `display` zatím nezná. Ověřeno na prototypu 21. 11. 2026.
+
+### Zařízení
+
+| `hwId` | Typ | Události / povely |
+|---|---|---|
+| `node1.kp1` | `keypad` | události `key`, `code` |
+| `node1.enc1` | `encoder` | události `turn`, `press` |
+| `node1.lcd1` | `display` | povel `lcd` |
+
+Tato zařízení nejdou elektricky ověřit (LCD je zapojené jen pro zápis), proto jsou v `hello` vždy.
+`hello` s 10 zařízeními má **421 B** (limit 512 B).
+
+### Události
+
+| Událost | Příklad | Kdy ji node pošle |
+|---|---|---|
+| `key` | `{"t":"ev","id":"node1.kp1","e":"key","v":"7","seq":50}` | každý stisk klávesy (`0`–`9`, `A`–`D`, `*`, `#`) po ošetření zákmitů; gateway jím může např. ukazovat průběh zadávání |
+| `code` | `{"t":"ev","id":"node1.kp1","e":"code","v":"1234","seq":51}` | klávesa `#` odešle rozepsaný kód (1–8 znaků z `0`–`9`, `A`–`D`); `*` rozepsaný kód smaže; prázdný kód se neposílá |
+| `turn` | `{"t":"ev","id":"node1.enc1","e":"turn","v":7,"seq":52}` | poloha enkodéru se změnila; `v` = **absolutní poloha 0–19** (20 zarážek na otáčku, dokola jako ciferník), doprava roste; nejvýš 10× za sekundu |
+| `press` | `{"t":"ev","id":"node1.enc1","e":"press","seq":53}` | stisk osy enkodéru (stejně jako u tlačítka) |
+
+**Proč `code` a ne jen jednotlivé klávesy:** pravidlo hádanky pak porovná jedinou hodnotu („kód = 1234“)
+a nemusí skládat stisky. Node kód jen sestaví, správnost posuzuje gateway.
+
+**Proč absolutní poloha enkodéru:** když se zpráva ztratí, další nese aktuální hodnotu a gateway se nerozejde
+se skutečností (stejný princip jako absolutní povely). Po startu nodu a po `reset` je poloha 0.
+
+### Povel `lcd`
+
+```json
+{"t":"lcd","cid":"20","id":"node1.lcd1","l1":"Vitejte!","l2":"Zadej kod"}
+```
+
+| Atribut | Význam |
+|---|---|
+| `l1`, `l2` | text 1. a 2. řádku, nejvýš 16 znaků (delší se ořízne), chybějící řádek = prázdný |
+
+Povel nastavuje **celý obsah displeje** (absolutní stav jako u LED). Displej umí jen ASCII: gateway má posílat text
+bez diakritiky, node znak mimo ASCII nahradí `?`. Bez diakritiky se povel vždy vejde do 128 B.
+Povel `reset` displej smaže. Po startu node ukáže `node1 fw 1.1.0` (pro technika), pak text řídí gateway.
+Node bez rozšíření odpoví na `lcd` `ack ok:false`, `err:"unknownDevice"`.
+
+### Stav podpory
+
+| Část | Stav |
+|---|---|
+| Firmware | ✅ 1.1.0, za přepínačem `ENABLE_EXTENSIONS` |
+| Gateway | ✅ přijímá nové typy a události, posílá `lcd`, vyhodnocuje pravidla níže; zařízení drží **jen lokálně** (`iot-gateway.md` kap. 10a) |
+| Cloud | ⬜ chybí typy zařízení a události v `device` a `event` a rozšíření `ruleType` níže |
+
+Návrh rozšíření pravidla pro cloud (`command-list-webapp.md`, `ruleType`); gateway ho už umí vyhodnotit:
+
+| Spouštěč `eventType` | Zařízení | Podmínka |
+|---|---|---|
+| `code` | `keypad` | `{ "operator": "eq", "value": "1234" }` (text) |
+| `turn` | `encoder` | `eq` / `gt` / `gte` / `lt` / `lte` s číslem 0–19 |
+| `press` | `encoder` | bez podmínky (jako tlačítko) |
+
+Nová akce: `{ "type": "showText", "deviceId": "<LCD>", "line1": "Trezor otevren", "line2": "" }`.
+
 ## Shrnutí rozhodnutí
 
 | Téma | Rozhodnutí |
 |---|---|
-| Formát | JSON na řádek, 115 200 Bd |
+| Formát | JSON na řádek, 115 200 Bd (ověřeno na prototypu 21. 11.) |
 | Identifikace | `hwId` = `<NODE_ID>.<zařízení>` |
 | Čas události | přiděluje gateway při přijetí |
 | Živost nodu | `hb` každých 5 s, odpojený po 15 s ticha |
 | Povely | absolutní stav, `cid` + `ack`, až 3 opakování |
 | Downsampling | medián za 5 min (UTC okna), z 10s vzorků |
 | Retence na gateway | neodeslané neomezeně, odeslané 24 h |
+| Rozšíření (2. fáze) | klávesnice → `code`, enkodér → absolutní poloha, LCD → absolutní text; ve firmwaru za přepínačem `ENABLE_EXTENSIONS` |

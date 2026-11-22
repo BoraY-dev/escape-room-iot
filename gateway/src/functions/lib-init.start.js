@@ -17,6 +17,8 @@ global.set("state", {
   deviceMap: {},         // hwId → cloudové deviceId
   game: null,            // místní stav hry
   leds: {},              // požadované stavy LED { hwId: "on" | "off" | "blink" }
+  displays: {},          // požadovaný text LCD { hwId: [řádek 1, řádek 2] }
+  inputs: {},            // poslední hodnoty klávesnice a enkodéru pro dashboard { hwId: { e, v, at } }
   nodes: {},             // registr nodů { node1: { lastSeen, up, devices, badDevices, fw } }
   cloud: { online: false, lastContactAt: null, alarm: null },
   registration: null,    // výsledek posledního pokusu o registraci (bez kódu)
