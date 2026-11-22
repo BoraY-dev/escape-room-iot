@@ -125,7 +125,7 @@ Aktéři: **Provozovatel**, **Game master**, **Hráč** (jen fyzicky ovládá p�
 | 6 | Návrh backendu (endpointy, datový model) | 2 | ✅ v uuMK (PR #1) |
 | 7 | Navrženo technické řešení IoT části | 2 | ✅ (PR #2) |
 | 7 | Základní implementace backendu | 2 | ✅ (`server/`, testy `npm test`) |
-| 8 | Základní implementace IoT části (node, gateway) | 2 | 🔶 firmware i Node-RED flow hotové a otestované bez HW; čeká test na RPi s Arduinem |
+| 8 | Základní implementace IoT části (node, gateway) | 2 | ✅ firmware 1.1 na prototypu, gateway (Node-RED) na RPi s autostartem; celá hra ověřena přes flow proti cloudu (22. 11.) |
 | 9 | Návrh frontendu (routy, komponenty) | **4** | ⬜ |
 | 10 | Základní implementace frontendu | 2 | ⬜ |
 | 12 | Nasazení aplikace v cloudu | 2 | 🔶 backend nasazený (Render + Atlas, 20. 11.), frontend zatím ne |
