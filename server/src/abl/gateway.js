@@ -8,7 +8,7 @@ import {
 } from "../dao/index.js";
 import { DEVICE_TYPES } from "../models/index.js";
 import { shape, string, integer, number, id, uuid, datetime, oneOf, array } from "../validation.js";
-import { createRateLimiter, iso, sid } from "./common.js";
+import { createRateLimiter, iso, sid, scenarioDto } from "./common.js";
 
 const OPERATORS = ["Operators"];
 const GATEWAYS = ["Gateways"];
@@ -18,18 +18,6 @@ const gameInProgress = () => new AppError("gameInProgress", 409, "A game is runn
 // ---------------------------------------------------------------------------
 // Pomocné převody na dtoOut
 // ---------------------------------------------------------------------------
-
-const puzzleDto = (p) => ({
-  id: sid(p._id),
-  name: p.name,
-  description: p.description ?? "",
-  order: p.order,
-  ruleList: (p.ruleList ?? []).map((r) => ({
-    trigger: { deviceId: sid(r.trigger?.deviceId), eventType: r.trigger?.eventType },
-    condition: r.condition ?? null,
-    actionList: (r.actionList ?? []).map((a) => ({ type: a.type, deviceId: sid(a.deviceId), state: a.state })),
-  })),
-});
 
 const gameDto = (g) => (g ? {
   id: sid(g._id),
@@ -200,10 +188,7 @@ export const gatewayCommands = [
         batchSize: config.batchSize,
         downsampling: config.downsampling,
         deviceList: devices.map((d) => ({ id: sid(d._id), hwId: d.hwId, type: d.type, name: d.name })),
-        scenario: {
-          id: sid(scenario._id), revision: scenario.revision, timeLimitMin: scenario.timeLimitMin,
-          hintDeviceId: sid(scenario.hintDeviceId), puzzleList: puzzles.map(puzzleDto),
-        },
+        scenario: scenarioDto(scenario, puzzles), // stejný tvar jako dtoOut scenario/get
         currentGame: gameDto(game),
       };
     },
@@ -360,7 +345,11 @@ export const gatewayCommands = [
             } else {
               const updated = await gameDao.solvePuzzle(game._id, e.puzzleId, e.occurredAt, tx);
               if (!updated) { isLate = true; return; }
-              if (updated.puzzleStateList.every((p) => p.state === "solved")) await gameDao.complete(game._id, e.occurredAt, tx);
+              if (updated.puzzleStateList.every((p) => p.state === "solved")) {
+                // poslední vyřešená hádanka dokončí hru; událost pro živý přehled zapíše cloud (source "system")
+                await gameDao.complete(game._id, e.occurredAt, tx);
+                await eventDao.create({ venueId, roomId, gameId: game._id, type: "gameCompleted", source: "system", occurredAt: e.occurredAt }, tx);
+              }
             }
           });
         } catch (err) {

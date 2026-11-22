@@ -42,6 +42,11 @@ export const number = () => makeType((v, path, ctx) => {
   return v;
 });
 
+export const boolean = () => makeType((v, path, ctx) => {
+  if (ctx.coerce && (v === "true" || v === "false")) return v === "true";
+  return typeof v === "boolean" ? v : fail(ctx, path, "must be a boolean");
+});
+
 export const id = () => makeType((v, path, ctx) =>
   typeof v === "string" && OBJECT_ID.test(v) ? v : fail(ctx, path, "must be an id (ObjectId)"));
 

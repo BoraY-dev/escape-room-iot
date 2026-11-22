@@ -35,6 +35,31 @@ export function deviceDto(device, gatewayOnline, now = Date.now()) {
   };
 }
 
+// Hádanka včetně pravidel (scenario/get, gateway/getConfig)
+export const puzzleDto = (p) => ({
+  id: sid(p._id),
+  roomId: sid(p.roomId),
+  name: p.name,
+  description: p.description ?? "",
+  order: p.order,
+  ruleList: (p.ruleList ?? []).map((r) => ({
+    trigger: { deviceId: sid(r.trigger?.deviceId), eventType: r.trigger?.eventType },
+    condition: r.condition?.operator ? { operator: r.condition.operator, value: r.condition.value } : null,
+    actionList: (r.actionList ?? []).map((a) => ({
+      type: a.type, ...(a.deviceId && { deviceId: sid(a.deviceId) }), ...(a.state && { state: a.state }),
+    })),
+  })),
+});
+
+export const scenarioDto = (scenario, puzzles) => ({
+  id: sid(scenario._id),
+  roomId: sid(scenario.roomId),
+  timeLimitMin: scenario.timeLimitMin,
+  hintDeviceId: sid(scenario.hintDeviceId),
+  revision: scenario.revision,
+  puzzleList: puzzles.map(puzzleDto),
+});
+
 // Omezení četnosti pokusů (registrace gateway, přihlášení) → 429 s uuAppErrorMap
 export function createRateLimiter(commandName, limit) {
   return rateLimit({

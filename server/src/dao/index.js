@@ -29,6 +29,7 @@ export const roomDao = {
   existsByName: (venueId, name, exceptId) =>
     Room.exists({ venueId, name, ...(exceptId && { _id: { $ne: exceptId } }) }),
   update: (venueId, id, set) => Room.findOneAndUpdate({ _id: id, venueId }, { $set: set }, { returnDocument: "after" }).lean(),
+  setCurrentGame: (roomId, gameId, session) => Room.updateOne({ _id: roomId }, { $set: { currentGameId: gameId } }, { session }),
   delete: (venueId, id) => Room.deleteOne({ _id: id, venueId }),
 };
 
@@ -36,10 +37,21 @@ export const scenarioDao = {
   create: (scenario) => Scenario.create(scenario),
   getByRoom: (roomId) => Scenario.findOne({ roomId }).lean(),
   deleteByRoom: (roomId) => Scenario.deleteMany({ roomId }),
+  // každá změna scénáře nebo hádanky zvýší revizi → gateway si stáhne nová pravidla
+  update: (roomId, set, session) =>
+    Scenario.findOneAndUpdate({ roomId }, { ...(set && { $set: set }), $inc: { revision: 1 } }, { returnDocument: "after", session }).lean(),
+  incrementRevision: (roomId, session) =>
+    Scenario.findOneAndUpdate({ roomId }, { $inc: { revision: 1 } }, { returnDocument: "after", session }).lean(),
 };
 
 export const puzzleDao = {
   listByRoom: (roomId) => Puzzle.find({ roomId }).sort({ order: 1, _id: 1 }).lean(),
+  get: (venueId, id) => Puzzle.findOne({ _id: id, venueId }).lean(),
+  countByRoom: (roomId) => Puzzle.countDocuments({ roomId }),
+  maxOrder: async (roomId) => (await Puzzle.findOne({ roomId }).sort({ order: -1 }).lean())?.order ?? 0,
+  create: async (puzzle, session) => (await Puzzle.create([puzzle], { session }))[0].toObject(),
+  update: (id, set, session) => Puzzle.findOneAndUpdate({ _id: id }, { $set: set }, { returnDocument: "after", session }).lean(),
+  delete: (id, session) => Puzzle.deleteOne({ _id: id }, { session }),
   deleteByRoom: (roomId) => Puzzle.deleteMany({ roomId }),
 };
 
@@ -59,6 +71,13 @@ export const gameDao = {
     Game.findOneAndUpdate({ _id: gameId, state: { $in: ["running", "paused"] } }, { $set: { state: "completed", endedAt } }, { returnDocument: "after", session }).lean(),
   incrementHintCount: (gameId, session) =>
     Game.updateOne({ _id: gameId, state: { $in: ["running", "paused"] } }, { $inc: { hintCount: 1 } }, { session }),
+  create: async (game, session) => (await Game.create([game], { session }))[0].toObject(),
+  // Podmíněný zápis: projde jen ve stavu ze seznamu expectedStates, takže dva souběžné zásahy se nepřepíšou
+  // arrayFilters: výběr položky pole pro $[p] (např. jedna hádanka v puzzleStateList)
+  updateIfState: (gameId, expectedStates, update, session, arrayFilters) =>
+    Game.findOneAndUpdate({ _id: gameId, state: { $in: expectedStates } }, update,
+      { returnDocument: "after", session, ...(arrayFilters && { arrayFilters }) }).lean(),
+  listRunning: () => Game.find({ state: "running" }).lean(),
   deleteByRoom: (roomId) => Game.deleteMany({ roomId }),
   ACTIVE_GAME_STATES,
 };
@@ -104,6 +123,14 @@ export const gatewayDao = {
 export const eventDao = {
   listByGatewayEventIds: (roomId, ids) => Event.find({ roomId, gatewayEventId: { $in: ids } }).lean(),
   create: async (event, session) => (await Event.create([event], { session }))[0],
+  // živý přehled: události PŘIJATÉ po čase since (createdAt), jinak posledních `limit`
+  listForGame: async (roomId, gameId, since, limit) => {
+    const filter = { roomId, $or: [{ gameId }, { gameId: { $exists: false } }, { gameId: null }] };
+    if (since) return Event.find({ ...filter, createdAt: { $gt: since } }).sort({ createdAt: 1 }).limit(limit).lean();
+    return (await Event.find(filter).sort({ createdAt: -1 }).limit(limit).lean()).reverse();
+  },
+  lastHintRequest: (gameId, after) =>
+    Event.findOne({ gameId, type: "hintRequested", occurredAt: { $gte: after } }).sort({ occurredAt: -1 }).lean(),
   deleteByRoom: (roomId) => Event.deleteMany({ roomId }),
 };
 
@@ -114,7 +141,7 @@ export const measurementDao = {
 };
 
 export const gatewayCommandDao = {
-  create: (command) => GatewayCommand.create(command),
+  create: async (command, session) => (await GatewayCommand.create([command], { session }))[0],
   listPending: (gatewayId, limit) =>
     GatewayCommand.find({ gatewayId, state: "pending" }).sort({ createdAt: 1, _id: 1 }).limit(limit).lean(),
   countPending: (gatewayId) => GatewayCommand.countDocuments({ gatewayId, state: "pending" }),

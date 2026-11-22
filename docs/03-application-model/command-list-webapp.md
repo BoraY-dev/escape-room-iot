@@ -490,7 +490,8 @@ const gameResetDtoInType = shape({ roomId: id().isRequired() });
 1. Zvaliduje dtoIn a načte místnost.
 2. Pokud hra běží nebo je pozastavená, vrátí `invalidGameState` (hru je nejdřív potřeba ukončit).
 3. Pokud scénář nemá žádné hádanky, vrátí `scenarioHasNoPuzzles` (409).
-4. Je-li aktuální hra už `ready`, ponechá ji a jen znovu pošle reset na gateway.
+4. Je-li aktuální hra už `ready` a scénář se od jejího založení nezměnil, ponechá ji a jen znovu pošle reset na gateway.
+   Připravenou hru se starou revizí pravidel ukončí (`terminated`) a založí novou, jinak by `game/start` stále hlásil `scenarioChanged`.
    Jinak založí novou hru: `state: "ready"`, `timeLimitMin` a `scenarioRevision` ze scénáře,
    všechny hádanky `unsolved`, `hintCount: 0`. Nastaví `room.currentGameId`.
 5. Zapíše událost a vloží povel pro gateway.

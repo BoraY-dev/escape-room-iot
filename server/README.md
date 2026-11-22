@@ -47,8 +47,10 @@ Demo účty `npm run dev:memory` (jen lokálně, data po ukončení zmizí):
 | Gateway – správa | `gateway/create`, `gateway/delete` | Operators |
 | Gateway – registrace | `gateway/register` | jednorázový registrační kód |
 | Gateway – provoz | `gateway/getConfig`, `gateway/heartbeat`, `gateway/sendEvents`, `gateway/sendMeasurements`, `gateway/getCommands`, `gateway/ackCommands` | Gateways |
+| Scénář a hádanky | `scenario/get`, `scenario/update`, `puzzle/create`, `puzzle/update`, `puzzle/delete` | Operators (čtení i GameMasters) |
+| Řízení hry | `game/reset`, `game/start`, `game/pause`, `game/resume`, `game/stop`, `game/solvePuzzle`, `game/unsolvePuzzle`, `game/getCurrent` | Operators, GameMasters |
 
-Zbývá: `scenario/*`, `puzzle/*`, `game/*` (návrh v Command Listu, implementace s frontendem).
+Server každých 5 s ukončí hry, kterým vypršel čas (`expireGames`). Rozšíření pro klávesnici, enkodér a LCD (`iot-protocol.md` kap. 9) cloud zatím nemá.
 
 ## Příklad: gateway od založení po odeslání dat
 

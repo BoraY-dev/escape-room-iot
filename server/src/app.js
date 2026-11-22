@@ -6,8 +6,10 @@ import { userCommands } from "./abl/user.js";
 import { roomCommands } from "./abl/room.js";
 import { deviceCommands } from "./abl/device.js";
 import { gatewayCommands } from "./abl/gateway.js";
+import { scenarioCommands } from "./abl/scenario.js";
+import { gameCommands } from "./abl/game.js";
 
-export const commands = [...userCommands, ...roomCommands, ...deviceCommands, ...gatewayCommands];
+export const commands = [...userCommands, ...roomCommands, ...deviceCommands, ...scenarioCommands, ...gameCommands, ...gatewayCommands];
 
 export function createApp() {
   const app = express();
